@@ -9,7 +9,6 @@ import (
 
 type Operation interface {
 	Run() error
-
 	Status() string
 }
 
