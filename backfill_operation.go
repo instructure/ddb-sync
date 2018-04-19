@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"sync/atomic"
+	"time"
 
+	"gerrit.instructure.com/ddb-sync/log"
 	"gerrit.instructure.com/ddb-sync/plan"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -23,9 +25,11 @@ type BackfillOperation struct {
 	inputClient *dynamodb.DynamoDB
 
 	describeStatusEnum int32
+	scanStatusEnum     int32
 
 	approximateItemCount      int64
 	approximateTableSizeBytes int64
+	batchScanCount            int64
 }
 
 func NewBackfillOperation(ctx context.Context, plan plan.Plan) (*BackfillOperation, error) {
@@ -58,7 +62,9 @@ func NewBackfillOperation(ctx context.Context, plan plan.Plan) (*BackfillOperati
 	}, nil
 }
 
-type BackfillRecord struct{} // TODO: REPLACE W/REAL RECORD
+type BackfillRecord struct {
+	Item map[string]*dynamodb.AttributeValue
+}
 
 func (o *BackfillOperation) Run() error {
 	collator := ErrorCollator{}
@@ -70,10 +76,22 @@ func (o *BackfillOperation) Run() error {
 }
 
 func (o *BackfillOperation) Status() string {
-	status := o.Plan.Input.TableName
+	inputDescription := ""
 	if o.Described() {
-		status += fmt.Sprintf(" (%d items; %d bytes)", o.ApproximateItemCount(), o.ApproximateTableSizeBytes())
+		inputDescription = fmt.Sprintf(" ~%d items (~%d bytes)", o.ApproximateItemCount(), o.ApproximateTableSizeBytes())
 	}
+
+	status := fmt.Sprintf("Backfilling [%s]%s ⇨ [%s]:  ", o.Plan.Input.TableName, inputDescription, o.Plan.Output.TableName)
+
+	if o.Scanning() || o.ScanComplete() {
+		status += fmt.Sprintf("%d read", o.BatchScanCount())
+		if o.BufferCapacity() > 0 {
+			status += fmt.Sprintf(" ⤏ (buffer:% 3d%%)", 100*o.BufferFill()/o.BufferCapacity())
+		}
+	} else {
+		status += "initializing…"
+	}
+
 	return status
 }
 
@@ -91,10 +109,40 @@ func (o *BackfillOperation) describe() error {
 
 func (o *BackfillOperation) scan() error {
 	defer close(o.c)
+	atomic.StoreInt32(&o.scanStatusEnum, 1)
 
-	// TODO: SCAN ALL RECORDS IN THE TABLE
+	input := &dynamodb.ScanInput{
+		TableName: &o.Plan.Input.TableName,
+	}
 
-	return errors.New("NOT IMPLEMENTED")
+	scanHandler := func(output *dynamodb.ScanOutput, lastPage bool) bool {
+		var lastReported time.Time
+		var itemsReported int
+
+		for i, item := range output.Items {
+			if lastReported.Before(time.Now().Add(time.Second)) {
+				lastReported = time.Now()
+
+				atomic.AddInt64(&o.batchScanCount, int64(i-itemsReported))
+				itemsReported = i
+			}
+
+			o.c <- BackfillRecord{Item: item}
+		}
+
+		atomic.AddInt64(&o.batchScanCount, int64(len(output.Items)-itemsReported))
+
+		return true
+	}
+
+	err := o.inputClient.ScanPagesWithContext(o.context, input, scanHandler)
+	if err != nil {
+		return fmt.Errorf("[SCAN] [%s] failed: %v", o.Plan.Input.TableName, err)
+	}
+
+	atomic.StoreInt32(&o.scanStatusEnum, 2)
+	log.Printf("[INFO] %s scan complete!", o.Plan.Input.TableName)
+	return nil
 }
 
 func (o *BackfillOperation) batchWrite() error {
@@ -115,4 +163,24 @@ func (o *BackfillOperation) ApproximateItemCount() int64 {
 
 func (o *BackfillOperation) ApproximateTableSizeBytes() int64 {
 	return atomic.LoadInt64(&o.approximateTableSizeBytes)
+}
+
+func (o *BackfillOperation) BatchScanCount() int64 {
+	return atomic.LoadInt64(&o.batchScanCount)
+}
+
+func (o *BackfillOperation) Scanning() bool {
+	return atomic.LoadInt32(&o.scanStatusEnum) == 1
+}
+
+func (o *BackfillOperation) ScanComplete() bool {
+	return atomic.LoadInt32(&o.scanStatusEnum) == 2
+}
+
+func (o *BackfillOperation) BufferFill() int {
+	return len(o.c)
+}
+
+func (o *BackfillOperation) BufferCapacity() int {
+	return cap(o.c)
 }
