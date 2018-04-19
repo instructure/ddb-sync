@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -22,14 +21,17 @@ type BackfillOperation struct {
 
 	c chan BackfillRecord
 
-	inputClient *dynamodb.DynamoDB
+	inputClient  *dynamodb.DynamoDB
+	outputClient *dynamodb.DynamoDB
 
 	describeStatusEnum int32
 	scanStatusEnum     int32
+	writeStatusEnum    int32
 
 	approximateItemCount      int64
 	approximateTableSizeBytes int64
 	batchScanCount            int64
+	writeCount                int64
 }
 
 func NewBackfillOperation(ctx context.Context, plan plan.Plan) (*BackfillOperation, error) {
@@ -51,19 +53,39 @@ func NewBackfillOperation(ctx context.Context, plan plan.Plan) (*BackfillOperati
 	}
 	inputClient := dynamodb.New(inputSession)
 
+	// Output config, session, & client (used for output-side DynamoDB calls)
+	outputConfig := baseConfig.Copy().WithRegion(plan.Output.Region)
+	if plan.Output.RoleARN != "" {
+		outputConfig.WithCredentials(stscreds.NewCredentials(baseSession, plan.Output.RoleARN))
+	}
+	outputSession, err := session.NewSession(outputConfig)
+	if err != nil {
+		return nil, err
+	}
+	outputClient := dynamodb.New(outputSession)
+
 	// Create operation w/instantiated clients
 	return &BackfillOperation{
 		Plan:    plan,
 		context: ctx,
 
-		c: make(chan BackfillRecord),
+		c: make(chan BackfillRecord, 1500),
 
-		inputClient: inputClient,
+		inputClient:  inputClient,
+		outputClient: outputClient,
 	}, nil
 }
 
 type BackfillRecord struct {
 	Item map[string]*dynamodb.AttributeValue
+}
+
+func (r *BackfillRecord) Request() *dynamodb.WriteRequest {
+	return &dynamodb.WriteRequest{
+		PutRequest: &dynamodb.PutRequest{
+			Item: r.Item,
+		},
+	}
 }
 
 func (o *BackfillOperation) Run() error {
@@ -85,8 +107,13 @@ func (o *BackfillOperation) Status() string {
 
 	if o.Scanning() || o.ScanComplete() {
 		status += fmt.Sprintf("%d read", o.BatchScanCount())
+
 		if o.BufferCapacity() > 0 {
 			status += fmt.Sprintf(" ⤏ (buffer:% 3d%%)", 100*o.BufferFill()/o.BufferCapacity())
+		}
+
+		if o.Writing() || o.WriteComplete() {
+			status += fmt.Sprintf(" ⤏ %d written", o.WriteCount())
 		}
 	} else {
 		status += "initializing…"
@@ -146,11 +173,58 @@ func (o *BackfillOperation) scan() error {
 }
 
 func (o *BackfillOperation) batchWrite() error {
-	for _ = range o.c {
-		// TODO: BATCH AND WRITE ALL RECORDS (probably with a select & timer)
+	atomic.StoreInt32(&o.writeStatusEnum, 1)
+	batch := make([]*dynamodb.WriteRequest, 0, 25)
+	for record := range o.c {
+		batch = append(batch, record.Request())
+		if len(batch) == 25 {
+			requestItems := map[string][]*dynamodb.WriteRequest{o.Plan.Output.TableName: batch}
+			batch = batch[:0]
+			// I need to multiple errors
+			err := o.sendBatch(requestItems) // TODO: let's handle errors better
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if len(batch) > 0 {
+		requestItems := map[string][]*dynamodb.WriteRequest{o.Plan.Output.TableName: batch}
+
+		// I need to handle errors better?
+		err := o.sendBatch(requestItems)
+		if err != nil {
+			return err
+		}
+	}
+	log.Printf("[INFO] completed writing to %s", o.Plan.Output.TableName)
+	atomic.StoreInt32(&o.writeStatusEnum, 2)
+	return nil
+}
+
+func (o *BackfillOperation) sendBatch(batch map[string][]*dynamodb.WriteRequest) error {
+	input := &dynamodb.BatchWriteItemInput{
+		RequestItems: batch,
+	}
+	batchLength := len(batch[o.Plan.Output.TableName])
+
+	err := input.Validate()
+	if err != nil {
+		return err
+	}
+	result, err := o.outputClient.BatchWriteItemWithContext(o.context, input)
+	if err != nil {
+		return err
 	}
 
-	return errors.New("NOT IMPLEMENTED")
+	// self-reinvoking
+	if len(result.UnprocessedItems) > 0 {
+		writeCount := batchLength - len(result.UnprocessedItems[o.Plan.Output.TableName])
+		atomic.AddInt64(&o.writeCount, int64(writeCount))
+		return o.sendBatch(result.UnprocessedItems)
+	}
+	atomic.AddInt64(&o.writeCount, int64(batchLength))
+
+	return nil
 }
 
 func (o *BackfillOperation) Described() bool {
@@ -169,6 +243,10 @@ func (o *BackfillOperation) BatchScanCount() int64 {
 	return atomic.LoadInt64(&o.batchScanCount)
 }
 
+func (o *BackfillOperation) WriteCount() int64 {
+	return atomic.LoadInt64(&o.writeCount)
+}
+
 func (o *BackfillOperation) Scanning() bool {
 	return atomic.LoadInt32(&o.scanStatusEnum) == 1
 }
@@ -183,4 +261,12 @@ func (o *BackfillOperation) BufferFill() int {
 
 func (o *BackfillOperation) BufferCapacity() int {
 	return cap(o.c)
+}
+
+func (o *BackfillOperation) Writing() bool {
+	return atomic.LoadInt32(&o.writeStatusEnum) == 1
+}
+
+func (o *BackfillOperation) WriteComplete() bool {
+	return atomic.LoadInt32(&o.writeStatusEnum) == 2
 }
