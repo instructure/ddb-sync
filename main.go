@@ -7,16 +7,19 @@ import (
 	"time"
 
 	"gerrit.instructure.com/ddb-sync/log"
-	"gerrit.instructure.com/ddb-sync/plan"
 )
 
 var StopSignals = []os.Signal{
 	os.Interrupt,
 }
 
-var plans = []plan.Plan{}
-
 func main() {
+	plans, err := ParseArgs(os.Args[1:])
+	if err != nil {
+		log.Printf("[ERROR] %v\n", err)
+		os.Exit(1)
+	}
+
 	dispatcher, err := NewDispatcher(plans)
 	if err != nil {
 		log.Printf("[ERROR] %v\n", err)
