@@ -2,9 +2,17 @@ package plan
 
 import (
 	"errors"
+
+	"github.com/aws/aws-sdk-go/aws/defaults"
 )
 
 var (
+	ErrInputRegionRequired    = errors.New("Input region is required")
+	ErrInputTableNameRequired = errors.New("Input table name is required")
+
+	ErrOutputRegionRequired    = errors.New("Output region is required")
+	ErrOutputTableNameRequired = errors.New("Output table name is required")
+
 	ErrInputAndOutputTablesCannotMatch = errors.New("Input and output tables cannot match")
 )
 
@@ -55,6 +63,24 @@ func (p Plan) WithDefaults() Plan {
 }
 
 func (p Plan) Validate() error {
+	defaultRegion := ""
+	defaultConfig := defaults.Get().Config
+	if defaultConfig.Region != nil {
+		defaultRegion = *defaultConfig.Region
+	}
+
+	if p.Input.Region == "" && defaultRegion == "" {
+		return ErrInputRegionRequired
+	} else if p.Input.TableName == "" {
+		return ErrInputTableNameRequired
+	}
+
+	if p.Output.Region == "" && defaultRegion == "" {
+		return ErrOutputRegionRequired
+	} else if p.Output.TableName == "" {
+		return ErrOutputTableNameRequired
+	}
+
 	if p.Input.Region != p.Output.Region || p.Input.TableName != p.Output.TableName || p.Input.RoleARN != p.Output.RoleARN {
 		return nil
 	} else {
