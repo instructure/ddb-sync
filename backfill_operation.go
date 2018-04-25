@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 
 	"gerrit.instructure.com/ddb-sync/plan"
 )
@@ -9,25 +10,27 @@ import (
 type BackfillOperation struct {
 	Plan    plan.Plan
 	context context.Context
+
+	c chan BackfillRecord
 }
 
 func NewBackfillOperation(ctx context.Context, plan plan.Plan) (*BackfillOperation, error) {
 	return &BackfillOperation{
-		Plan: plan,
-
+		Plan:    plan,
 		context: ctx,
+
+		c: make(chan BackfillRecord),
 	}, nil
 }
 
 type BackfillRecord struct{} // TODO: REPLACE W/REAL RECORD
 
 func (o *BackfillOperation) Run() error {
-	c := make(chan BackfillRecord)
+	collator := ErrorCollator{}
+	collator.Register(o.scan)       // TODO: FANOUT?
+	collator.Register(o.batchWrite) // TODO: FANOUT?
 
-	go o.scan(c)    // TODO: FANOUT?
-	o.batchWrite(c) // TODO: FANOUT?
-
-	return errors.New("NOT IMPLEMENTED")
+	return collator.Run()
 }
 
 func (o *BackfillOperation) Status() string {
@@ -35,14 +38,18 @@ func (o *BackfillOperation) Status() string {
 	return "NOT IMPLEMENTED"
 }
 
-func (o *BackfillOperation) scan(c chan BackfillRecord) {
-	defer close(c)
+func (o *BackfillOperation) scan() error {
+	defer close(o.c)
 
 	// TODO: SCAN ALL RECORDS IN THE TABLE
+
+	return errors.New("NOT IMPLEMENTED")
 }
 
-func (o *BackfillOperation) batchWrite(c chan BackfillRecord) {
-	for _ = range c {
+func (o *BackfillOperation) batchWrite() error {
+	for _ = range o.c {
 		// TODO: BATCH AND WRITE ALL RECORDS (probably with a select & timer)
 	}
+
+	return errors.New("NOT IMPLEMENTED")
 }

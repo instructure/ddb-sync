@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/signal"
 	"strings"
@@ -35,15 +36,22 @@ func main() {
 	displayTicker := StartDisplayTicker(dispatcher)
 
 	// Wait for all operators to indicate completion
-	errs := dispatcher.Wait()
+	err = dispatcher.Wait()
 	displayTicker.Stop()
 
-	if len(errs) > 0 {
-		for _, err := range errs {
-			log.Printf("[ERROR] %v\n", err)
-		}
+	displayStatus(dispatcher)
 
-		os.Exit(5)
+	switch err {
+	case nil:
+	case context.Canceled:
+		log.Print("[USER CANCELED]\n")
+		os.Exit(130)
+	case ErrOperationFailed:
+		log.Print("[OPERATION FAILED]\n")
+		os.Exit(79)
+	default:
+		log.Printf("[ERROR] %v\n", err)
+		os.Exit(79)
 	}
 }
 

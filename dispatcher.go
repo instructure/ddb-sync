@@ -2,19 +2,25 @@ package main
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"gerrit.instructure.com/ddb-sync/plan"
+)
+
+var (
+	ErrOperationFailed = errors.New("Operation failed")
 )
 
 type Dispatcher struct {
 	Operators   []*Operator
 	operatorsWG sync.WaitGroup
 
-	ctx      context.Context
-	cancel   context.CancelFunc
-	errsLock sync.Mutex
-	errs     []error
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	errLock sync.Mutex
+	err     error
 }
 
 func NewDispatcher(plans []plan.Plan) (*Dispatcher, error) {
@@ -44,22 +50,23 @@ func NewDispatcher(plans []plan.Plan) (*Dispatcher, error) {
 }
 
 func (d *Dispatcher) Start() {
+	collator := ErrorCollator{}
+
 	d.operatorsWG.Add(len(d.Operators))
 	for i := range d.Operators {
 		operator := d.Operators[i]
-		go func() {
+		collator.Register(func() error {
 			defer d.operatorsWG.Done()
-
-			// Run the operator
-			err := operator.Run()
-			if err != nil {
-				d.errsLock.Lock()
-				defer d.errsLock.Unlock()
-
-				d.errs = append(d.errs, err)
-			}
-		}()
+			return operator.Run()
+		})
 	}
+
+	go func() {
+		d.errLock.Lock()
+		defer d.errLock.Unlock()
+
+		d.err = collator.Run()
+	}()
 }
 
 func (d *Dispatcher) Statuses() []string {
@@ -74,10 +81,10 @@ func (d *Dispatcher) Cancel() {
 	d.cancel()
 }
 
-func (d *Dispatcher) Wait() []error {
+func (d *Dispatcher) Wait() error {
 	d.operatorsWG.Wait()
 
-	d.errsLock.Lock()
-	defer d.errsLock.Unlock()
-	return d.errs
+	d.errLock.Lock()
+	defer d.errLock.Unlock()
+	return d.err
 }
