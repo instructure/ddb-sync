@@ -62,12 +62,17 @@ func StartSignalHandler(dispatcher *Dispatcher) {
 func StartDisplayTicker(dispatcher *Dispatcher) *time.Ticker {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	go func() {
+		displayStatus(dispatcher)
 		for range ticker.C {
-			statuses := dispatcher.Statuses()
-
-			log.ClearStatus()
-			log.StatusPrintln(strings.Join(statuses, "\n"))
+			displayStatus(dispatcher)
 		}
 	}()
 	return ticker
+}
+
+func displayStatus(dispatcher *Dispatcher) {
+	statuses := dispatcher.Statuses()
+
+	log.ClearStatus()
+	log.StatusPrintln(strings.Join(statuses, "\n"))
 }
