@@ -2,9 +2,18 @@ package main
 
 import (
 	"errors"
+
+	"gerrit.instructure.com/ddb-sync/plan"
 )
 
 type StreamOperation struct {
+	Plan plan.Plan
+}
+
+func NewStreamOperation(plan plan.Plan) (*StreamOperation, error) {
+	return &StreamOperation{
+		Plan: plan,
+	}, nil
 }
 
 type StreamRecord struct{} // TODO: REPLACE W/REAL RECORD

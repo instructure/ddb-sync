@@ -23,7 +23,11 @@ func NewDispatcher(plans []plan.Plan) (*Dispatcher, error) {
 			return nil, err
 		}
 
-		operators = append(operators, NewOperator(plan))
+		operator, err := NewOperator(plan)
+		if err != nil {
+			return nil, err
+		}
+		operators = append(operators, operator)
 	}
 
 	return &Dispatcher{Operators: operators}, nil

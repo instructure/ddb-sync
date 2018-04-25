@@ -2,9 +2,18 @@ package main
 
 import (
 	"errors"
+
+	"gerrit.instructure.com/ddb-sync/plan"
 )
 
 type BackfillOperation struct {
+	Plan plan.Plan
+}
+
+func NewBackfillOperation(plan plan.Plan) (*BackfillOperation, error) {
+	return &BackfillOperation{
+		Plan: plan,
+	}, nil
 }
 
 type BackfillRecord struct{} // TODO: REPLACE W/REAL RECORD

@@ -13,26 +13,54 @@ type Operation interface {
 	Status() string
 }
 
+type OperatorPhase int
+
+const (
+	NotStartedPhase OperatorPhase = iota
+	BackfillPhase
+	StreamPhase
+)
+
 type Operator struct {
 	Plan plan.Plan
 
-	operationLock sync.Mutex
-	operation     Operation
+	operationLock  sync.Mutex
+	operationPhase OperatorPhase
+	backfill       Operation
+	stream         Operation
 }
 
-func NewOperator(plan plan.Plan) *Operator {
-	return &Operator{
+func NewOperator(plan plan.Plan) (*Operator, error) {
+	var err error
+
+	o := &Operator{
 		Plan: plan,
 	}
+
+	if !o.Plan.Backfill.Disabled {
+		o.backfill, err = NewBackfillOperation(plan)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if !o.Plan.Stream.Disabled {
+		o.stream, err = NewStreamOperation(plan)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return o, nil
 }
 
 func (o *Operator) Run() error {
 	if !o.Plan.Backfill.Disabled {
 		o.operationLock.Lock()
-		o.operation = &BackfillOperation{}
+		o.operationPhase = BackfillPhase
 		o.operationLock.Unlock()
 
-		err := o.operation.Run()
+		err := o.backfill.Run()
 		if err != nil {
 			return err
 		}
@@ -40,10 +68,10 @@ func (o *Operator) Run() error {
 
 	if !o.Plan.Stream.Disabled {
 		o.operationLock.Lock()
-		o.operation = &StreamOperation{}
+		o.operationPhase = StreamPhase
 		o.operationLock.Unlock()
 
-		err := o.operation.Run()
+		err := o.stream.Run()
 		if err != nil {
 			return err
 		}
@@ -56,8 +84,11 @@ func (o *Operator) Stop() {
 	o.operationLock.Lock()
 	defer o.operationLock.Unlock()
 
-	if o.operation != nil {
-		o.operation.Stop()
+	switch o.operationPhase {
+	case BackfillPhase:
+		o.backfill.Stop()
+	case StreamPhase:
+		o.stream.Stop()
 	}
 }
 
@@ -65,9 +96,14 @@ func (o *Operator) Status() string {
 	o.operationLock.Lock()
 	defer o.operationLock.Unlock()
 
-	if o.operation != nil {
-		return o.operation.Status()
-	} else {
-		return "INTERNAL ERROR: Operation missing"
+	switch o.operationPhase {
+	case NotStartedPhase:
+		return "Waiting…"
+	case BackfillPhase:
+		return o.backfill.Status()
+	case StreamPhase:
+		return o.stream.Status()
+	default:
+		return "INTERNAL ERROR: Unknown operation status"
 	}
 }
