@@ -1,18 +1,21 @@
 package main
 
 import (
-	"errors"
+	"context"
 
 	"gerrit.instructure.com/ddb-sync/plan"
 )
 
 type BackfillOperation struct {
-	Plan plan.Plan
+	Plan    plan.Plan
+	context context.Context
 }
 
-func NewBackfillOperation(plan plan.Plan) (*BackfillOperation, error) {
+func NewBackfillOperation(ctx context.Context, plan plan.Plan) (*BackfillOperation, error) {
 	return &BackfillOperation{
 		Plan: plan,
+
+		context: ctx,
 	}, nil
 }
 
@@ -25,10 +28,6 @@ func (o *BackfillOperation) Run() error {
 	o.batchWrite(c) // TODO: FANOUT?
 
 	return errors.New("NOT IMPLEMENTED")
-}
-
-func (o *BackfillOperation) Stop() {
-	// TODO: STOP THE STREAM OPERATION
 }
 
 func (o *BackfillOperation) Status() string {

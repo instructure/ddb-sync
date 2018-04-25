@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"sync"
 
 	"gerrit.instructure.com/ddb-sync/plan"
@@ -8,7 +9,6 @@ import (
 
 type Operation interface {
 	Run() error
-	Stop()
 
 	Status() string
 }
@@ -24,28 +24,31 @@ const (
 type Operator struct {
 	Plan plan.Plan
 
+	context context.Context
+
 	operationLock  sync.Mutex
 	operationPhase OperatorPhase
 	backfill       Operation
 	stream         Operation
 }
 
-func NewOperator(plan plan.Plan) (*Operator, error) {
+func NewOperator(ctx context.Context, plan plan.Plan) (*Operator, error) {
 	var err error
 
 	o := &Operator{
-		Plan: plan,
+		Plan:    plan,
+		context: ctx,
 	}
 
 	if !o.Plan.Backfill.Disabled {
-		o.backfill, err = NewBackfillOperation(plan)
+		o.backfill, err = NewBackfillOperation(ctx, plan)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	if !o.Plan.Stream.Disabled {
-		o.stream, err = NewStreamOperation(plan)
+		o.stream, err = NewStreamOperation(ctx, plan)
 		if err != nil {
 			return nil, err
 		}
@@ -78,18 +81,6 @@ func (o *Operator) Run() error {
 	}
 
 	return nil
-}
-
-func (o *Operator) Stop() {
-	o.operationLock.Lock()
-	defer o.operationLock.Unlock()
-
-	switch o.operationPhase {
-	case BackfillPhase:
-		o.backfill.Stop()
-	case StreamPhase:
-		o.stream.Stop()
-	}
 }
 
 func (o *Operator) Status() string {

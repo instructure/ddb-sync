@@ -53,7 +53,7 @@ func StartSignalHandler(dispatcher *Dispatcher) {
 		signal.Notify(sigs, StopSignals...)
 
 		<-sigs
-		dispatcher.Stop() // only signal Stop() once
+		dispatcher.Cancel() // only signal Cancel() once
 
 		signal.Ignore(StopSignals...)
 	}()

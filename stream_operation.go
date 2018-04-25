@@ -1,18 +1,21 @@
 package main
 
 import (
+	"context"
 	"errors"
 
 	"gerrit.instructure.com/ddb-sync/plan"
 )
 
 type StreamOperation struct {
-	Plan plan.Plan
+	Plan    plan.Plan
+	context context.Context
 }
 
-func NewStreamOperation(plan plan.Plan) (*StreamOperation, error) {
+func NewStreamOperation(ctx context.Context, plan plan.Plan) (*StreamOperation, error) {
 	return &StreamOperation{
-		Plan: plan,
+		Plan:    plan,
+		context: ctx,
 	}, nil
 }
 
@@ -25,10 +28,6 @@ func (o *StreamOperation) Run() error {
 	o.batchWrite(c)    // TODO: FANOUT?
 
 	return errors.New("NOT IMPLEMENTED")
-}
-
-func (o *StreamOperation) Stop() {
-	// TODO: STOP THE STREAM OPERATION
 }
 
 func (o *StreamOperation) Status() string {

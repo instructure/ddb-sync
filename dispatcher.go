@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"sync"
 
 	"gerrit.instructure.com/ddb-sync/plan"
@@ -10,27 +11,36 @@ type Dispatcher struct {
 	Operators   []*Operator
 	operatorsWG sync.WaitGroup
 
+	ctx      context.Context
+	cancel   context.CancelFunc
 	errsLock sync.Mutex
 	errs     []error
 }
 
 func NewDispatcher(plans []plan.Plan) (*Dispatcher, error) {
 	var operators []*Operator
+	ctx, cancel := context.WithCancel(context.Background())
 	for _, plan := range plans {
 		plan = plan.WithDefaults()
 		err := plan.Validate()
 		if err != nil {
+			cancel()
 			return nil, err
 		}
 
-		operator, err := NewOperator(plan)
+		operator, err := NewOperator(ctx, plan)
 		if err != nil {
+			cancel()
 			return nil, err
 		}
 		operators = append(operators, operator)
 	}
 
-	return &Dispatcher{Operators: operators}, nil
+	return &Dispatcher{
+		Operators: operators,
+		ctx:       ctx,
+		cancel:    cancel,
+	}, nil
 }
 
 func (d *Dispatcher) Start() {
@@ -60,10 +70,8 @@ func (d *Dispatcher) Statuses() []string {
 	return statuses
 }
 
-func (d *Dispatcher) Stop() {
-	for _, operator := range d.Operators {
-		operator.Stop()
-	}
+func (d *Dispatcher) Cancel() {
+	d.cancel()
 }
 
 func (d *Dispatcher) Wait() []error {
