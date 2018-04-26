@@ -1,0 +1,13 @@
+FROM golang:1.10-alpine
+
+RUN apk add --update \
+    build-base \
+    curl \
+    git \
+&& rm -rf /var/cache/apk/*
+
+COPY . $GOPATH/src/gerrit.instructure.com/ddb-sync
+
+WORKDIR $GOPATH/src/gerrit.instructure.com/ddb-sync
+
+RUN go get .
