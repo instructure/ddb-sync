@@ -2,33 +2,52 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"os"
 
 	"gerrit.instructure.com/ddb-sync/plan"
 
 	flag "github.com/spf13/pflag"
+	"gopkg.in/yaml.v2"
 )
 
 func ParseArgs(args []string) ([]plan.Plan, error) {
-	flag := flagSet()
-	err := flag.Parse(args)
+	flagSet := flagSet()
+
+	if len(args) == 0 {
+		fmt.Println("ddb-sync:")
+		fmt.Println(flagSet.FlagUsages())
+		return nil, fmt.Errorf("Improper usage")
+	}
+
+	err := flagSet.Parse(args)
 	if err != nil {
 		return nil, err
 	}
 
-	if flag.NArg() > 0 {
-		return nil, fmt.Errorf("Unknown argument(s): %v", flag.Args())
+	if flagSet.NArg() > 0 {
+		return nil, fmt.Errorf("Unknown argument(s): %v", flagSet.Args())
 	}
 
-	inputRegion, _ := flag.GetString("input-region")
-	inputTable, _ := flag.GetString("input-table")
-	inputRole, _ := flag.GetString("input-role-arn")
+	if file, _ := flagSet.GetString("config-file"); file != "" {
+		// Grab some plans from the config file parsing
+		plans, err := parseConfigFile(file)
+		if err != nil {
+			return nil, err
+		}
+		return plans, nil
+	}
 
-	outputRegion, _ := flag.GetString("output-region")
-	outputTable, _ := flag.GetString("output-table")
-	outputRole, _ := flag.GetString("output-role-arn")
+	inputRegion, _ := flagSet.GetString("input-region")
+	inputTable, _ := flagSet.GetString("input-table")
+	inputRole, _ := flagSet.GetString("input-role-arn")
 
-	backfill, _ := flag.GetBool("backfill")
-	stream, _ := flag.GetBool("stream")
+	outputRegion, _ := flagSet.GetString("output-region")
+	outputTable, _ := flagSet.GetString("output-table")
+	outputRole, _ := flagSet.GetString("output-role-arn")
+
+	backfill, _ := flagSet.GetBool("backfill")
+	stream, _ := flagSet.GetBool("stream")
 
 	plan := []plan.Plan{
 		{
@@ -59,6 +78,8 @@ func ParseArgs(args []string) ([]plan.Plan, error) {
 func flagSet() *flag.FlagSet {
 	flag := flag.NewFlagSet("ddb-sync", flag.ContinueOnError)
 
+	flag.String("config-file", "", "Filename for configuration yaml")
+
 	flag.String("input-region", "", "The input region")
 	flag.String("input-table", "", "Name of the input table")
 	flag.String("input-role-arn", "", "ARN of the input role")
@@ -71,4 +92,34 @@ func flagSet() *flag.FlagSet {
 	flag.Bool("stream", true, "Perform the streaming operation")
 
 	return flag
+}
+
+type PlanConfig struct {
+	Plan []plan.Plan `yaml:"plan"`
+}
+
+func parseConfigFile(filePath string) ([]plan.Plan, error) {
+	var f io.Reader
+	var err error
+
+	if filePath == "-" {
+		f = os.Stdin
+	} else {
+		fp, err := os.Open(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to open configuration file: %v", err)
+		}
+		defer fp.Close()
+		f = fp
+	}
+
+	var config PlanConfig
+
+	decoder := yaml.NewDecoder(f)
+	decoder.SetStrict(true)
+	err = decoder.Decode(&config)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse configuration file: %v", err)
+	}
+	return config.Plan, nil
 }

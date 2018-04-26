@@ -17,35 +17,35 @@ var (
 )
 
 type Input struct {
-	Region    string
-	TableName string
+	Region    string `yaml:"region"`
+	TableName string `yaml:"table"`
 
-	RoleARN string
+	RoleARN string `yaml:"role_arn"`
 }
 
 type Output struct {
-	Region    string // defaults to the Input region
-	TableName string // defaults to the Input table name
+	Region    string `yaml:"region"` // defaults to the Input region
+	TableName string `yaml:"table"`  // defaults to the Input table name
 
-	RoleARN string
+	RoleARN string `yaml:"role_arn"`
 }
 
 type Backfill struct {
-	Disabled bool
+	Disabled bool `yaml:"disabled"`
 }
 
 type Stream struct {
-	Disabled bool
+	Disabled bool `yaml:"disabled"`
 }
 
 type Plan struct {
-	Input Input
+	Input Input `yaml:"input"`
 
-	Output Output
+	Output Output `yaml:"output"`
 
-	Backfill Backfill
+	Backfill Backfill `yaml:"backfill"`
 
-	Stream Stream
+	Stream Stream `yaml:"stream"`
 }
 
 func (p Plan) WithDefaults() Plan {
