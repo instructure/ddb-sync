@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -18,7 +20,8 @@ type BackfillOperation struct {
 	context           context.Context
 	contextCancelFunc context.CancelFunc
 
-	c chan BackfillRecord
+	backfillBeginOnce sync.Once
+	c                 chan BackfillRecord
 
 	inputClient  *dynamodb.DynamoDB
 	outputClient *dynamodb.DynamoDB
@@ -48,7 +51,7 @@ func NewBackfillOperation(ctx context.Context, plan config.OperationPlan, cancel
 		context:           ctx,
 		contextCancelFunc: cancelFunc,
 
-		c: make(chan BackfillRecord, 1500),
+		c: make(chan BackfillRecord, 3500),
 
 		inputClient:  inputClient,
 		outputClient: outputClient,
@@ -72,8 +75,8 @@ func (o *BackfillOperation) Run() error {
 		Cancel: o.contextCancelFunc,
 	}
 	collator.Register(o.describe)
-	collator.Register(o.scan)       // TODO: FANOUT?
-	collator.Register(o.batchWrite) // TODO: FANOUT?
+	collator.Register(o.scan) // TODO: FANOUT?
+	collator.Register(o.batchWrite)
 
 	return collator.Run()
 }
@@ -166,10 +169,37 @@ func (o *BackfillOperation) scan() error {
 }
 
 func (o *BackfillOperation) batchWrite() error {
+	collator := ErrorCollator{
+		Cancel: o.contextCancelFunc,
+	}
+
+	fanOutWidth := runtime.NumCPU() * 1
+	for i := 0; i < fanOutWidth; i++ {
+		collator.Register(o.batchWriter)
+	}
+
+	err := collator.Run()
+	if err == nil {
+		log.Printf("[%s] ⇨ [%s]: Backfill complete!", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
+		atomic.StoreInt32(&o.writeStatusEnum, 2)
+		return nil
+	}
+
+	if err != context.Canceled {
+		return fmt.Errorf("[%s] ⇨ [%s]: Backfill failed: (BatchWriteItem) %v", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, err)
+	}
+
+	return err
+}
+
+func (o *BackfillOperation) signalBackfillStart() {
 	atomic.StoreInt32(&o.writeStatusEnum, 1)
+	log.Printf("[%s] ⇨ [%s]: Backfill started…", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
+}
+
+func (o *BackfillOperation) batchWriter() error {
 	batch := make([]*dynamodb.WriteRequest, 0, 25)
 
-	started := false
 	done := o.context.Done()
 
 channel:
@@ -178,17 +208,15 @@ channel:
 		case record, ok := <-o.c:
 			if !ok {
 				break channel
-			} else if !started {
-				started = true
-				log.Printf("[%s] ⇨ [%s]: Backfill started…", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
 			}
+
+			o.backfillBeginOnce.Do(o.signalBackfillStart)
 
 			batch = append(batch, record.Request())
 			if len(batch) == 25 {
 				requestItems := map[string][]*dynamodb.WriteRequest{o.OperationPlan.Output.TableName: batch}
 				batch = batch[:0]
-				// I need to multiple errors
-				err := o.sendBatch(requestItems) // TODO: let's handle errors better
+				err := o.sendBatch(requestItems)
 				if err != nil {
 					return err
 				}
@@ -207,9 +235,6 @@ channel:
 			return err
 		}
 	}
-
-	log.Printf("[%s] ⇨ [%s]: Backfill complete!", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
-	atomic.StoreInt32(&o.writeStatusEnum, 2)
 	return nil
 }
 
@@ -225,7 +250,6 @@ func (o *BackfillOperation) sendBatch(batch map[string][]*dynamodb.WriteRequest)
 	}
 	result, err := o.outputClient.BatchWriteItemWithContext(o.context, input)
 	if err != nil {
-		return fmt.Errorf("[%s] ⇨ [%s]: Backfill failed: (BatchWriteItem) %v", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, err)
 	}
 
 	// self-reinvoking
