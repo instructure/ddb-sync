@@ -34,7 +34,7 @@ func NewDispatcher(plans []plan.Plan) (*Dispatcher, error) {
 			return nil, err
 		}
 
-		operator, err := NewOperator(ctx, plan)
+		operator, err := NewOperator(ctx, plan, cancel)
 		if err != nil {
 			cancel()
 			return nil, err
@@ -50,7 +50,9 @@ func NewDispatcher(plans []plan.Plan) (*Dispatcher, error) {
 }
 
 func (d *Dispatcher) Start() {
-	collator := ErrorCollator{}
+	collator := ErrorCollator{
+		Cancel: d.cancel,
+	}
 
 	d.operatorsWG.Add(len(d.Operators))
 	for i := range d.Operators {

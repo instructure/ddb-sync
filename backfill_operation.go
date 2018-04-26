@@ -16,8 +16,9 @@ import (
 )
 
 type BackfillOperation struct {
-	Plan    plan.Plan
-	context context.Context
+	Plan              plan.Plan
+	context           context.Context
+	contextCancelFunc context.CancelFunc
 
 	c chan BackfillRecord
 
@@ -34,7 +35,7 @@ type BackfillOperation struct {
 	writeCount                int64
 }
 
-func NewBackfillOperation(ctx context.Context, plan plan.Plan) (*BackfillOperation, error) {
+func NewBackfillOperation(ctx context.Context, plan plan.Plan, cancelFunc context.CancelFunc) (*BackfillOperation, error) {
 	// Base config & session (used for STS calls)
 	baseConfig := aws.NewConfig().WithRegion(plan.Input.Region).WithMaxRetries(15)
 	baseSession, err := session.NewSession(baseConfig)
@@ -66,8 +67,9 @@ func NewBackfillOperation(ctx context.Context, plan plan.Plan) (*BackfillOperati
 
 	// Create operation w/instantiated clients
 	return &BackfillOperation{
-		Plan:    plan,
-		context: ctx,
+		Plan:              plan,
+		context:           ctx,
+		contextCancelFunc: cancelFunc,
 
 		c: make(chan BackfillRecord, 1500),
 
@@ -89,7 +91,9 @@ func (r *BackfillRecord) Request() *dynamodb.WriteRequest {
 }
 
 func (o *BackfillOperation) Run() error {
-	collator := ErrorCollator{}
+	collator := ErrorCollator{
+		Cancel: o.contextCancelFunc,
+	}
 	collator.Register(o.describe)
 	collator.Register(o.scan)       // TODO: FANOUT?
 	collator.Register(o.batchWrite) // TODO: FANOUT?
@@ -142,6 +146,8 @@ func (o *BackfillOperation) scan() error {
 		TableName: &o.Plan.Input.TableName,
 	}
 
+	done := o.context.Done()
+
 	scanHandler := func(output *dynamodb.ScanOutput, lastPage bool) bool {
 		var lastReported time.Time
 		var itemsReported int
@@ -154,7 +160,11 @@ func (o *BackfillOperation) scan() error {
 				itemsReported = i
 			}
 
-			o.c <- BackfillRecord{Item: item}
+			select {
+			case o.c <- BackfillRecord{Item: item}:
+			case <-done:
+				return false
+			}
 		}
 
 		atomic.AddInt64(&o.batchScanCount, int64(len(output.Items)-itemsReported))
@@ -167,30 +177,51 @@ func (o *BackfillOperation) scan() error {
 		return fmt.Errorf("[SCAN] [%s] failed: %v", o.Plan.Input.TableName, err)
 	}
 
-	atomic.StoreInt32(&o.scanStatusEnum, 2)
-	log.Printf("[INFO] %s scan complete!", o.Plan.Input.TableName)
-	return nil
+	// check if the context has been canceled
+	select {
+	case <-done:
+		return o.context.Err()
+
+	default:
+		atomic.StoreInt32(&o.scanStatusEnum, 2)
+		log.Printf("[INFO] %s scan complete!", o.Plan.Input.TableName)
+		return nil
+	}
 }
 
 func (o *BackfillOperation) batchWrite() error {
 	atomic.StoreInt32(&o.writeStatusEnum, 1)
 	batch := make([]*dynamodb.WriteRequest, 0, 25)
-	for record := range o.c {
-		batch = append(batch, record.Request())
-		if len(batch) == 25 {
-			requestItems := map[string][]*dynamodb.WriteRequest{o.Plan.Output.TableName: batch}
-			batch = batch[:0]
-			// I need to multiple errors
-			err := o.sendBatch(requestItems) // TODO: let's handle errors better
-			if err != nil {
-				return err
+
+	done := o.context.Done()
+
+channel:
+	for {
+		select {
+		case record, ok := <-o.c:
+			if !ok {
+				break channel
 			}
+
+			batch = append(batch, record.Request())
+			if len(batch) == 25 {
+				requestItems := map[string][]*dynamodb.WriteRequest{o.Plan.Output.TableName: batch}
+				batch = batch[:0]
+				// I need to multiple errors
+				err := o.sendBatch(requestItems) // TODO: let's handle errors better
+				if err != nil {
+					return err
+				}
+			}
+
+		case <-done:
+			return o.context.Err()
 		}
 	}
+
 	if len(batch) > 0 {
 		requestItems := map[string][]*dynamodb.WriteRequest{o.Plan.Output.TableName: batch}
 
-		// I need to handle errors better?
 		err := o.sendBatch(requestItems)
 		if err != nil {
 			return err

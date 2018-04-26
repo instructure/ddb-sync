@@ -23,7 +23,8 @@ const (
 type Operator struct {
 	Plan plan.Plan
 
-	context context.Context
+	context           context.Context
+	contextCancelFunc context.CancelFunc
 
 	operationLock  sync.Mutex
 	operationPhase OperatorPhase
@@ -31,23 +32,24 @@ type Operator struct {
 	stream         Operation
 }
 
-func NewOperator(ctx context.Context, plan plan.Plan) (*Operator, error) {
+func NewOperator(ctx context.Context, plan plan.Plan, cancelFunc context.CancelFunc) (*Operator, error) {
 	var err error
 
 	o := &Operator{
-		Plan:    plan,
-		context: ctx,
+		Plan:              plan,
+		context:           ctx,
+		contextCancelFunc: cancelFunc,
 	}
 
 	if !o.Plan.Backfill.Disabled {
-		o.backfill, err = NewBackfillOperation(ctx, plan)
+		o.backfill, err = NewBackfillOperation(ctx, plan, cancelFunc)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	if !o.Plan.Stream.Disabled {
-		o.stream, err = NewStreamOperation(ctx, plan)
+		o.stream, err = NewStreamOperation(ctx, plan, cancelFunc)
 		if err != nil {
 			return nil, err
 		}

@@ -4,10 +4,13 @@ import (
 	"context"
 
 	"gerrit.instructure.com/ddb-sync/log"
+
+	"github.com/aws/aws-sdk-go/aws/awserr"
 )
 
 type ErrorCollator struct {
-	Funcs []func() error
+	Funcs  []func() error
+	Cancel func()
 }
 
 func (c *ErrorCollator) Register(f func() error) {
@@ -16,6 +19,8 @@ func (c *ErrorCollator) Register(f func() error) {
 
 func (c *ErrorCollator) Run() error {
 	errs := make(chan error)
+	defer close(errs)
+
 	for i := range c.Funcs {
 		f := c.Funcs[i]
 		go func() {
@@ -25,7 +30,14 @@ func (c *ErrorCollator) Run() error {
 
 	var finalError error
 	for range c.Funcs {
-		switch err := <-errs; err {
+		err := <-errs
+		if awsErr, ok := err.(awserr.Error); ok {
+			if awsErr.Code() == "RequestCanceled" {
+				err = context.Canceled
+			}
+		}
+
+		switch err {
 		case nil:
 			// :D
 		case context.Canceled:
@@ -33,6 +45,10 @@ func (c *ErrorCollator) Run() error {
 				finalError = context.Canceled
 			}
 		default:
+			if c.Cancel != nil {
+				c.Cancel()
+			}
+
 			if err != ErrOperationFailed {
 				log.Printf("[ERROR] %v\n", err)
 			}

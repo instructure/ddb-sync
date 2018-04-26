@@ -8,16 +8,18 @@ import (
 )
 
 type StreamOperation struct {
-	Plan    plan.Plan
-	context context.Context
+	Plan              plan.Plan
+	context           context.Context
+	contextCancelFunc context.CancelFunc
 
 	c chan StreamRecord
 }
 
-func NewStreamOperation(ctx context.Context, plan plan.Plan) (*StreamOperation, error) {
+func NewStreamOperation(ctx context.Context, plan plan.Plan, cancelFunc context.CancelFunc) (*StreamOperation, error) {
 	return &StreamOperation{
-		Plan:    plan,
-		context: ctx,
+		Plan:              plan,
+		context:           ctx,
+		contextCancelFunc: cancelFunc,
 
 		c: make(chan StreamRecord),
 	}, nil
@@ -26,7 +28,9 @@ func NewStreamOperation(ctx context.Context, plan plan.Plan) (*StreamOperation, 
 type StreamRecord struct{} // TODO: REPLACE W/REAL RECORD
 
 func (o *StreamOperation) Run() error {
-	collator := ErrorCollator{}
+	collator := ErrorCollator{
+		Cancel: o.contextCancelFunc,
+	}
 	collator.Register(o.readStream) // TODO: FANOUT?
 	collator.Register(o.batchWrite) // TODO: FANOUT?
 
