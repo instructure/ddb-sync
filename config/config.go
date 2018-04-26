@@ -1,9 +1,13 @@
-package plan
+package config
 
 import (
 	"errors"
+	"fmt"
+	"io"
+	"os"
 
 	"github.com/aws/aws-sdk-go/aws/defaults"
+	"gopkg.in/yaml.v2"
 )
 
 var (
@@ -15,6 +19,10 @@ var (
 
 	ErrInputAndOutputTablesCannotMatch = errors.New("Input and output tables cannot match")
 )
+
+type PlanConfig struct {
+	Plan []OperationPlan `yaml:"plan"`
+}
 
 type Input struct {
 	Region    string `yaml:"region"`
@@ -38,7 +46,7 @@ type Stream struct {
 	Disabled bool `yaml:"disabled"`
 }
 
-type Plan struct {
+type OperationPlan struct {
 	Input Input `yaml:"input"`
 
 	Output Output `yaml:"output"`
@@ -48,7 +56,7 @@ type Plan struct {
 	Stream Stream `yaml:"stream"`
 }
 
-func (p Plan) WithDefaults() Plan {
+func (p OperationPlan) WithDefaults() OperationPlan {
 	newPlan := p
 
 	if newPlan.Output.TableName == "" {
@@ -62,7 +70,7 @@ func (p Plan) WithDefaults() Plan {
 	return newPlan
 }
 
-func (p Plan) Validate() error {
+func (p OperationPlan) Validate() error {
 	defaultRegion := ""
 	defaultConfig := defaults.Get().Config
 	if defaultConfig.Region != nil {
@@ -86,4 +94,30 @@ func (p Plan) Validate() error {
 	} else {
 		return ErrInputAndOutputTablesCannotMatch
 	}
+}
+
+func ParseConfigFile(filePath string) ([]OperationPlan, error) {
+	var f io.Reader
+	var err error
+
+	if filePath == "-" {
+		f = os.Stdin
+	} else {
+		fp, err := os.Open(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to open configuration file: %v", err)
+		}
+		defer fp.Close()
+		f = fp
+	}
+
+	var config PlanConfig
+
+	decoder := yaml.NewDecoder(f)
+	decoder.SetStrict(true)
+	err = decoder.Decode(&config)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse configuration file: %v", err)
+	}
+	return config.Plan, nil
 }

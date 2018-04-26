@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gerrit.instructure.com/ddb-sync/config"
 	"gerrit.instructure.com/ddb-sync/log"
-	"gerrit.instructure.com/ddb-sync/plan"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
@@ -16,7 +16,7 @@ import (
 )
 
 type BackfillOperation struct {
-	Plan              plan.Plan
+	OperationPlan     config.OperationPlan
 	context           context.Context
 	contextCancelFunc context.CancelFunc
 
@@ -35,7 +35,7 @@ type BackfillOperation struct {
 	writeCount                int64
 }
 
-func NewBackfillOperation(ctx context.Context, plan plan.Plan, cancelFunc context.CancelFunc) (*BackfillOperation, error) {
+func NewBackfillOperation(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*BackfillOperation, error) {
 	// Base config & session (used for STS calls)
 	baseConfig := aws.NewConfig().WithRegion(plan.Input.Region).WithMaxRetries(15)
 	baseSession, err := session.NewSession(baseConfig)
@@ -67,7 +67,7 @@ func NewBackfillOperation(ctx context.Context, plan plan.Plan, cancelFunc contex
 
 	// Create operation w/instantiated clients
 	return &BackfillOperation{
-		Plan:              plan,
+		OperationPlan:     plan,
 		context:           ctx,
 		contextCancelFunc: cancelFunc,
 
@@ -107,7 +107,7 @@ func (o *BackfillOperation) Status() string {
 		inputDescription = fmt.Sprintf(" ~%d items (~%d bytes)", o.ApproximateItemCount(), o.ApproximateTableSizeBytes())
 	}
 
-	status := fmt.Sprintf("Backfilling%s [%s] ⇨ [%s]:  ", inputDescription, o.Plan.Input.TableName, o.Plan.Output.TableName)
+	status := fmt.Sprintf("Backfilling%s [%s] ⇨ [%s]:  ", inputDescription, o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
 
 	if o.Scanning() || o.ScanComplete() {
 		status += fmt.Sprintf("%d read", o.BatchScanCount())
@@ -127,9 +127,9 @@ func (o *BackfillOperation) Status() string {
 }
 
 func (o *BackfillOperation) describe() error {
-	output, err := o.inputClient.DescribeTableWithContext(o.context, &dynamodb.DescribeTableInput{TableName: aws.String(o.Plan.Input.TableName)})
+	output, err := o.inputClient.DescribeTableWithContext(o.context, &dynamodb.DescribeTableInput{TableName: aws.String(o.OperationPlan.Input.TableName)})
 	if err != nil {
-		return fmt.Errorf("[DESCRIBE] [%s] failed: %v", o.Plan.Input.TableName, err)
+		return fmt.Errorf("[DESCRIBE] [%s] failed: %v", o.OperationPlan.Input.TableName, err)
 	}
 
 	atomic.StoreInt64(&o.approximateItemCount, *output.Table.ItemCount)
@@ -143,7 +143,7 @@ func (o *BackfillOperation) scan() error {
 	atomic.StoreInt32(&o.scanStatusEnum, 1)
 
 	input := &dynamodb.ScanInput{
-		TableName: &o.Plan.Input.TableName,
+		TableName: &o.OperationPlan.Input.TableName,
 	}
 
 	done := o.context.Done()
@@ -174,7 +174,7 @@ func (o *BackfillOperation) scan() error {
 
 	err := o.inputClient.ScanPagesWithContext(o.context, input, scanHandler)
 	if err != nil {
-		return fmt.Errorf("[SCAN] [%s] failed: %v", o.Plan.Input.TableName, err)
+		return fmt.Errorf("[SCAN] [%s] failed: %v", o.OperationPlan.Input.TableName, err)
 	}
 
 	// check if the context has been canceled
@@ -184,7 +184,7 @@ func (o *BackfillOperation) scan() error {
 
 	default:
 		atomic.StoreInt32(&o.scanStatusEnum, 2)
-		log.Printf("[INFO] %s scan complete!", o.Plan.Input.TableName)
+		log.Printf("[INFO] %s scan complete!", o.OperationPlan.Input.TableName)
 		return nil
 	}
 }
@@ -205,7 +205,7 @@ channel:
 
 			batch = append(batch, record.Request())
 			if len(batch) == 25 {
-				requestItems := map[string][]*dynamodb.WriteRequest{o.Plan.Output.TableName: batch}
+				requestItems := map[string][]*dynamodb.WriteRequest{o.OperationPlan.Output.TableName: batch}
 				batch = batch[:0]
 				// I need to multiple errors
 				err := o.sendBatch(requestItems) // TODO: let's handle errors better
@@ -220,14 +220,14 @@ channel:
 	}
 
 	if len(batch) > 0 {
-		requestItems := map[string][]*dynamodb.WriteRequest{o.Plan.Output.TableName: batch}
+		requestItems := map[string][]*dynamodb.WriteRequest{o.OperationPlan.Output.TableName: batch}
 
 		err := o.sendBatch(requestItems)
 		if err != nil {
 			return err
 		}
 	}
-	log.Printf("[INFO] completed writing to %s", o.Plan.Output.TableName)
+	log.Printf("[INFO] completed writing to %s", o.OperationPlan.Output.TableName)
 	atomic.StoreInt32(&o.writeStatusEnum, 2)
 	return nil
 }
@@ -236,7 +236,7 @@ func (o *BackfillOperation) sendBatch(batch map[string][]*dynamodb.WriteRequest)
 	input := &dynamodb.BatchWriteItemInput{
 		RequestItems: batch,
 	}
-	batchLength := len(batch[o.Plan.Output.TableName])
+	batchLength := len(batch[o.OperationPlan.Output.TableName])
 
 	err := input.Validate()
 	if err != nil {
@@ -249,7 +249,7 @@ func (o *BackfillOperation) sendBatch(batch map[string][]*dynamodb.WriteRequest)
 
 	// self-reinvoking
 	if len(result.UnprocessedItems) > 0 {
-		writeCount := batchLength - len(result.UnprocessedItems[o.Plan.Output.TableName])
+		writeCount := batchLength - len(result.UnprocessedItems[o.OperationPlan.Output.TableName])
 		atomic.AddInt64(&o.writeCount, int64(writeCount))
 		return o.sendBatch(result.UnprocessedItems)
 	}

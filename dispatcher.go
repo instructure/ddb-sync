@@ -5,7 +5,7 @@ import (
 	"errors"
 	"sync"
 
-	"gerrit.instructure.com/ddb-sync/plan"
+	"gerrit.instructure.com/ddb-sync/config"
 )
 
 var (
@@ -23,7 +23,7 @@ type Dispatcher struct {
 	err     error
 }
 
-func NewDispatcher(plans []plan.Plan) (*Dispatcher, error) {
+func NewDispatcher(plans []config.OperationPlan) (*Dispatcher, error) {
 	var operators []*Operator
 	ctx, cancel := context.WithCancel(context.Background())
 	for _, plan := range plans {

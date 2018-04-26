@@ -2,16 +2,13 @@ package main
 
 import (
 	"fmt"
-	"io"
-	"os"
 
-	"gerrit.instructure.com/ddb-sync/plan"
+	"gerrit.instructure.com/ddb-sync/config"
 
 	flag "github.com/spf13/pflag"
-	"gopkg.in/yaml.v2"
 )
 
-func ParseArgs(args []string) ([]plan.Plan, error) {
+func ParseArgs(args []string) ([]config.OperationPlan, error) {
 	flagSet := flagSet()
 
 	if len(args) == 0 {
@@ -30,8 +27,8 @@ func ParseArgs(args []string) ([]plan.Plan, error) {
 	}
 
 	if file, _ := flagSet.GetString("config-file"); file != "" {
-		// Grab some plans from the config file parsing
-		plans, err := parseConfigFile(file)
+		// Parse the plans from the config file
+		plans, err := config.ParseConfigFile(file)
 		if err != nil {
 			return nil, err
 		}
@@ -49,24 +46,24 @@ func ParseArgs(args []string) ([]plan.Plan, error) {
 	backfill, _ := flagSet.GetBool("backfill")
 	stream, _ := flagSet.GetBool("stream")
 
-	plan := []plan.Plan{
+	plan := []config.OperationPlan{
 		{
-			Input: plan.Input{
+			Input: config.Input{
 				Region:    inputRegion,
 				TableName: inputTable,
 
 				RoleARN: inputRole,
 			},
-			Output: plan.Output{
+			Output: config.Output{
 				Region:    outputRegion,
 				TableName: outputTable,
 
 				RoleARN: outputRole,
 			},
-			Backfill: plan.Backfill{
+			Backfill: config.Backfill{
 				Disabled: !backfill,
 			},
-			Stream: plan.Stream{
+			Stream: config.Stream{
 				Disabled: !stream,
 			},
 		},
@@ -92,34 +89,4 @@ func flagSet() *flag.FlagSet {
 	flag.Bool("stream", true, "Perform the streaming operation")
 
 	return flag
-}
-
-type PlanConfig struct {
-	Plan []plan.Plan `yaml:"plan"`
-}
-
-func parseConfigFile(filePath string) ([]plan.Plan, error) {
-	var f io.Reader
-	var err error
-
-	if filePath == "-" {
-		f = os.Stdin
-	} else {
-		fp, err := os.Open(filePath)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to open configuration file: %v", err)
-		}
-		defer fp.Close()
-		f = fp
-	}
-
-	var config PlanConfig
-
-	decoder := yaml.NewDecoder(f)
-	decoder.SetStrict(true)
-	err = decoder.Decode(&config)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to parse configuration file: %v", err)
-	}
-	return config.Plan, nil
 }

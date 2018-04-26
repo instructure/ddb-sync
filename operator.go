@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"gerrit.instructure.com/ddb-sync/plan"
+	"gerrit.instructure.com/ddb-sync/config"
 )
 
 type Operation interface {
@@ -21,7 +21,7 @@ const (
 )
 
 type Operator struct {
-	Plan plan.Plan
+	OperationPlan config.OperationPlan
 
 	context           context.Context
 	contextCancelFunc context.CancelFunc
@@ -32,23 +32,23 @@ type Operator struct {
 	stream         Operation
 }
 
-func NewOperator(ctx context.Context, plan plan.Plan, cancelFunc context.CancelFunc) (*Operator, error) {
+func NewOperator(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*Operator, error) {
 	var err error
 
 	o := &Operator{
-		Plan:              plan,
+		OperationPlan:     plan,
 		context:           ctx,
 		contextCancelFunc: cancelFunc,
 	}
 
-	if !o.Plan.Backfill.Disabled {
+	if !o.OperationPlan.Backfill.Disabled {
 		o.backfill, err = NewBackfillOperation(ctx, plan, cancelFunc)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if !o.Plan.Stream.Disabled {
+	if !o.OperationPlan.Stream.Disabled {
 		o.stream, err = NewStreamOperation(ctx, plan, cancelFunc)
 		if err != nil {
 			return nil, err
@@ -59,7 +59,7 @@ func NewOperator(ctx context.Context, plan plan.Plan, cancelFunc context.CancelF
 }
 
 func (o *Operator) Run() error {
-	if !o.Plan.Backfill.Disabled {
+	if !o.OperationPlan.Backfill.Disabled {
 		o.operationLock.Lock()
 		o.operationPhase = BackfillPhase
 		o.operationLock.Unlock()
@@ -70,7 +70,7 @@ func (o *Operator) Run() error {
 		}
 	}
 
-	if !o.Plan.Stream.Disabled {
+	if !o.OperationPlan.Stream.Disabled {
 		o.operationLock.Lock()
 		o.operationPhase = StreamPhase
 		o.operationLock.Unlock()

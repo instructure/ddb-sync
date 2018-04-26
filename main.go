@@ -15,13 +15,13 @@ var StopSignals = []os.Signal{
 }
 
 func main() {
-	plans, err := ParseArgs(os.Args[1:])
+	plan, err := ParseArgs(os.Args[1:])
 	if err != nil {
 		log.Printf("[ERROR] %v\n", err)
 		os.Exit(1)
 	}
 
-	dispatcher, err := NewDispatcher(plans)
+	dispatcher, err := NewDispatcher(plan)
 	if err != nil {
 		log.Printf("[ERROR] %v\n", err)
 		os.Exit(2)

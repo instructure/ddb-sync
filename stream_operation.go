@@ -4,20 +4,20 @@ import (
 	"context"
 	"errors"
 
-	"gerrit.instructure.com/ddb-sync/plan"
+	"gerrit.instructure.com/ddb-sync/config"
 )
 
 type StreamOperation struct {
-	Plan              plan.Plan
+	OperationPlan     config.OperationPlan
 	context           context.Context
 	contextCancelFunc context.CancelFunc
 
 	c chan StreamRecord
 }
 
-func NewStreamOperation(ctx context.Context, plan plan.Plan, cancelFunc context.CancelFunc) (*StreamOperation, error) {
+func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*StreamOperation, error) {
 	return &StreamOperation{
-		Plan:              plan,
+		OperationPlan:     plan,
 		context:           ctx,
 		contextCancelFunc: cancelFunc,
 
