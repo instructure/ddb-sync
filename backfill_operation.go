@@ -248,7 +248,7 @@ func (o *BackfillOperation) sendBatch(batch map[string][]*dynamodb.WriteRequest)
 	}
 
 	// self-reinvoking
-	if len(result.UnprocessedItems) > 0 {
+	if len(result.UnprocessedItems) > 0 && len(result.UnprocessedItems[o.OperationPlan.Output.TableName]) > 0 {
 		writeCount := batchLength - len(result.UnprocessedItems[o.OperationPlan.Output.TableName])
 		atomic.AddInt64(&o.writeCount, int64(writeCount))
 		return o.sendBatch(result.UnprocessedItems)
