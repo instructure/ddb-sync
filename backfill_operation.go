@@ -129,7 +129,7 @@ func (o *BackfillOperation) Status() string {
 func (o *BackfillOperation) describe() error {
 	output, err := o.inputClient.DescribeTableWithContext(o.context, &dynamodb.DescribeTableInput{TableName: aws.String(o.OperationPlan.Input.TableName)})
 	if err != nil {
-		return fmt.Errorf("[DESCRIBE] [%s] failed: %v", o.OperationPlan.Input.TableName, err)
+		return fmt.Errorf("[%s] ⇨ [%s]: Backfill failed: (DescribeTable) %v", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, err)
 	}
 
 	atomic.StoreInt64(&o.approximateItemCount, *output.Table.ItemCount)
@@ -174,7 +174,7 @@ func (o *BackfillOperation) scan() error {
 
 	err := o.inputClient.ScanPagesWithContext(o.context, input, scanHandler)
 	if err != nil {
-		return fmt.Errorf("[SCAN] [%s] failed: %v", o.OperationPlan.Input.TableName, err)
+		return fmt.Errorf("[%s] ⇨ [%s]: Backfill failed: (Scan) %v", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, err)
 	}
 
 	// check if the context has been canceled
@@ -184,7 +184,6 @@ func (o *BackfillOperation) scan() error {
 
 	default:
 		atomic.StoreInt32(&o.scanStatusEnum, 2)
-		log.Printf("[INFO] %s scan complete!", o.OperationPlan.Input.TableName)
 		return nil
 	}
 }
@@ -193,6 +192,7 @@ func (o *BackfillOperation) batchWrite() error {
 	atomic.StoreInt32(&o.writeStatusEnum, 1)
 	batch := make([]*dynamodb.WriteRequest, 0, 25)
 
+	started := false
 	done := o.context.Done()
 
 channel:
@@ -201,6 +201,9 @@ channel:
 		case record, ok := <-o.c:
 			if !ok {
 				break channel
+			} else if !started {
+				started = true
+				log.Printf("[%s] ⇨ [%s]: Backfill started…", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
 			}
 
 			batch = append(batch, record.Request())
@@ -227,7 +230,8 @@ channel:
 			return err
 		}
 	}
-	log.Printf("[INFO] completed writing to %s", o.OperationPlan.Output.TableName)
+
+	log.Printf("[%s] ⇨ [%s]: Backfill complete!", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
 	atomic.StoreInt32(&o.writeStatusEnum, 2)
 	return nil
 }
@@ -244,7 +248,7 @@ func (o *BackfillOperation) sendBatch(batch map[string][]*dynamodb.WriteRequest)
 	}
 	result, err := o.outputClient.BatchWriteItemWithContext(o.context, input)
 	if err != nil {
-		return err
+		return fmt.Errorf("[%s] ⇨ [%s]: Backfill failed: (BatchWriteItem) %v", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, err)
 	}
 
 	// self-reinvoking

@@ -8,6 +8,10 @@ import (
 	"sync"
 )
 
+const (
+	StatusDelimiter = "-------------------------------- Current Status --------------------------------"
+)
+
 var (
 	logger      = log.New(os.Stdout, "", log.LstdFlags)
 	statusLock  sync.Mutex
@@ -38,6 +42,10 @@ func ClearStatus() {
 
 	hideStatus()
 	statusLines = statusLines[:0]
+
+	fmt.Fprintln(os.Stdout)
+	fmt.Fprintln(os.Stdout, StatusDelimiter)
+	statusLines = append(statusLines, "", StatusDelimiter, "")
 }
 
 func hideStatus() {
