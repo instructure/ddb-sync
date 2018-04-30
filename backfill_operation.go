@@ -103,7 +103,7 @@ func (o *BackfillOperation) Status() string {
 		inputDescription = fmt.Sprintf(" ~%d items (~%d bytes)", o.ApproximateItemCount(), o.ApproximateTableSizeBytes())
 	}
 
-	status := fmt.Sprintf("Backfilling [%s]%s ⇨ [%s]:  ", o.Plan.Input.TableName, inputDescription, o.Plan.Output.TableName)
+	status := fmt.Sprintf("Backfilling%s [%s] ⇨ [%s]:  ", inputDescription, o.Plan.Input.TableName, o.Plan.Output.TableName)
 
 	if o.Scanning() || o.ScanComplete() {
 		status += fmt.Sprintf("%d read", o.BatchScanCount())
