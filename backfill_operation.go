@@ -31,7 +31,7 @@ type BackfillOperation struct {
 
 	approximateItemCount      int64
 	approximateTableSizeBytes int64
-	batchScanCount            int64
+	scanCount                 int64
 	writeCount                int64
 }
 
@@ -110,7 +110,7 @@ func (o *BackfillOperation) Status() string {
 	status := fmt.Sprintf("Backfilling%s [%s] ⇨ [%s]:  ", inputDescription, o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
 
 	if o.Scanning() || o.ScanComplete() {
-		status += fmt.Sprintf("%d read", o.BatchScanCount())
+		status += fmt.Sprintf("%d read", o.ScanCount())
 
 		if o.BufferCapacity() > 0 {
 			status += fmt.Sprintf(" ⤏ (buffer:% 3d%%)", 100*o.BufferFill()/o.BufferCapacity())
@@ -156,7 +156,7 @@ func (o *BackfillOperation) scan() error {
 			if lastReported.Before(time.Now().Add(time.Second)) {
 				lastReported = time.Now()
 
-				atomic.AddInt64(&o.batchScanCount, int64(i-itemsReported))
+				atomic.AddInt64(&o.scanCount, int64(i-itemsReported))
 				itemsReported = i
 			}
 
@@ -167,7 +167,7 @@ func (o *BackfillOperation) scan() error {
 			}
 		}
 
-		atomic.AddInt64(&o.batchScanCount, int64(len(output.Items)-itemsReported))
+		atomic.AddInt64(&o.scanCount, int64(len(output.Items)-itemsReported))
 
 		return true
 	}
@@ -274,8 +274,8 @@ func (o *BackfillOperation) ApproximateTableSizeBytes() int64 {
 	return atomic.LoadInt64(&o.approximateTableSizeBytes)
 }
 
-func (o *BackfillOperation) BatchScanCount() int64 {
-	return atomic.LoadInt64(&o.batchScanCount)
+func (o *BackfillOperation) ScanCount() int64 {
+	return atomic.LoadInt64(&o.scanCount)
 }
 
 func (o *BackfillOperation) WriteCount() int64 {
