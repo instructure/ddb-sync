@@ -38,11 +38,11 @@ Example:
 ---
 plan:
   - input:
-      table_name: ddb-sync-source
+      table: ddb-sync-source
       region: us-west-2
       role_arn: arn:aws:iam::<account_num>:role/ddb-sync-READ_ONLY_SOURCE
     output:
-      table_name: ddb-sync-dest
+      table: ddb-sync-dest
       region: us-east-2
       role_arn: arn:aws:iam::<account_num>:role/ddb-sync_WRITE_ONLY_DEST
     stream:
