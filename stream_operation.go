@@ -5,6 +5,9 @@ import (
 	"errors"
 
 	"gerrit.instructure.com/ddb-sync/config"
+
+	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodbstreams"
 )
 
 type StreamOperation struct {
@@ -12,7 +15,16 @@ type StreamOperation struct {
 	context           context.Context
 	contextCancelFunc context.CancelFunc
 
-	c chan StreamRecord
+	inputDescribeTableClient *dynamodb.DynamoDB
+	inputClient              *dynamodbstreams.DynamoDBStreams
+	outputClient             *dynamodb.DynamoDB
+
+	readStatusEnum int32
+
+	receivedCount int64
+	writeCount    int64
+
+	c chan dynamodbstreams.Record
 }
 
 func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*StreamOperation, error) {
@@ -21,18 +33,16 @@ func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFu
 		context:           ctx,
 		contextCancelFunc: cancelFunc,
 
-		c: make(chan StreamRecord),
+		c: make(chan dynamodbstreams.Record),
 	}, nil
 }
-
-type StreamRecord struct{} // TODO: REPLACE W/REAL RECORD
 
 func (o *StreamOperation) Run() error {
 	collator := ErrorCollator{
 		Cancel: o.contextCancelFunc,
 	}
-	collator.Register(o.readStream) // TODO: FANOUT?
-	collator.Register(o.batchWrite) // TODO: FANOUT?
+	collator.Register(o.readStream)
+	collator.Register(o.writeRecords)
 
 	return collator.Run()
 }
@@ -46,12 +56,11 @@ func (o *StreamOperation) readStream() error {
 	defer close(o.c)
 
 	// TODO: READ ALL SHARDS IN THE STREAM
-
 	return errors.New("NOT IMPLEMENTED")
 }
 
-func (o *StreamOperation) batchWrite() error {
-	for _ = range o.c {
+func (o *StreamOperation) writeRecords() error {
+	for range o.c {
 		// TODO: BATCH AND WRITE ALL RECORDS (probably with a select & timer)
 	}
 
