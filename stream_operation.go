@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"sync/atomic"
 	"time"
 
@@ -171,9 +170,33 @@ func (o *StreamOperation) lookupLatestStreamARN(tableName string) error {
 }
 
 func (o *StreamOperation) writeRecords() error {
-	for range o.c {
-		// TODO: BATCH AND WRITE ALL RECORDS (probably with a select & timer)
+	atomic.StoreInt32(&o.writeStatusEnum, 1)
+	for record := range o.c {
+		if *record.EventName == "REMOVE" {
+			input := &dynamodb.DeleteItemInput{
+				Key:       record.Dynamodb.Keys,
+				TableName: aws.String(o.OperationPlan.Output.TableName),
+			}
+			_, err := o.outputClient.DeleteItemWithContext(o.context, input)
+			if err != nil {
+				return err
+			}
+		} else {
+			input := &dynamodb.PutItemInput{
+				Item:      record.Dynamodb.NewImage,
+				TableName: aws.String(o.OperationPlan.Output.TableName),
+			}
+			_, err := o.outputClient.PutItemWithContext(o.context, input)
+			if err != nil {
+				return err
+			}
+		}
+
+		o.latency.Update(*record.Dynamodb.ApproximateCreationDateTime)
+		atomic.AddInt64(&o.writeCount, 1)
 	}
 
-	return errors.New("NOT IMPLEMENTED")
+	atomic.StoreInt32(&o.writeStatusEnum, 2)
+
+	return nil
 }
