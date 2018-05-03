@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"gerrit.instructure.com/ddb-sync/config"
@@ -18,6 +19,7 @@ const (
 	NotStartedPhase OperatorPhase = iota
 	BackfillPhase
 	StreamPhase
+	NoopPhase
 )
 
 type Operator struct {
@@ -81,6 +83,10 @@ func (o *Operator) Run() error {
 		}
 	}
 
+	if o.OperationPlan.Backfill.Disabled && o.OperationPlan.Stream.Disabled {
+		o.operationPhase = NoopPhase
+	}
+
 	return nil
 }
 
@@ -95,6 +101,8 @@ func (o *Operator) Status() string {
 		return o.backfill.Status()
 	case StreamPhase:
 		return o.stream.Status()
+	case NoopPhase:
+		return fmt.Sprintf("Nothing to do: [%s] ⇨ [%s]:  ", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
 	default:
 		return "INTERNAL ERROR: Unknown operation status"
 	}
