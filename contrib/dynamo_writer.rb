@@ -14,7 +14,6 @@ end
 
 i = 0
 while i < 1000
-
   params = {
     table_name: 'ddb-sync-source',
     item: create_item(seq: SecureRandom.uuid)
@@ -26,4 +25,5 @@ while i < 1000
     puts error.message
   end
   i += 1
+  sleep 2
 end
