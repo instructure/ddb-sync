@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync/atomic"
+	"time"
 
 	"gerrit.instructure.com/ddb-sync/config"
 	"gerrit.instructure.com/ddb-sync/dispatcher"
 	"gerrit.instructure.com/ddb-sync/log"
 	"gerrit.instructure.com/ddb-sync/shard_tree"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodbstreams"
 )
@@ -107,7 +108,50 @@ func (o *StreamOperation) readStream() error {
 }
 
 func (o *StreamOperation) processShard(shard *shard_tree.Shard) error {
-	return fmt.Errorf("NOT IMPLEMENTED")
+	shardIteratorOutput, err := o.inputClient.GetShardIteratorWithContext(
+		o.context,
+		&dynamodbstreams.GetShardIteratorInput{
+			StreamArn:         &o.streamARN,
+			ShardId:           &shard.Id,
+			ShardIteratorType: aws.String("TRIM_HORIZON"),
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	iterator := shardIteratorOutput.ShardIterator
+
+	recordInput := &dynamodbstreams.GetRecordsInput{Limit: aws.Int64(1000), ShardIterator: iterator}
+	recordOutput, err := o.inputClient.GetRecordsWithContext(o.context, recordInput)
+
+	if err != nil {
+		return err
+	}
+
+	for recordOutput.NextShardIterator != nil && *recordOutput.NextShardIterator != "" {
+		if len(recordOutput.Records) == 0 {
+			o.latency.Update(time.Now())
+		}
+
+		for _, record := range recordOutput.Records {
+			atomic.AddInt64(&o.receivedCount, 1)
+			select {
+			case o.c <- *record:
+			case <-o.context.Done():
+				return o.context.Err()
+			}
+		}
+
+		iterator := recordOutput.NextShardIterator
+		recordInput := &dynamodbstreams.GetRecordsInput{Limit: aws.Int64(1000), ShardIterator: iterator}
+		var err error
+		recordOutput, err = o.inputClient.GetRecordsWithContext(o.context, recordInput)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (o *StreamOperation) lookupLatestStreamARN(tableName string) error {
