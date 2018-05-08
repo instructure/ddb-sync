@@ -8,6 +8,29 @@ This makes moving DynamoDB content between tables as simple as we can get.
 _**NOTE:** Until `vgo` is merged into an official Go release, it must be installed separately. The
 standard `go` toolchain can be used to install `vgo`: `go get -u golang.org/x/vgo`._
 
+### Role permission requirements
+If you want to use role assumption to gain access, you'll need to provide the following permissions.
+
+#### Source Table (and stream)
+##### Backfill permissions
+DescribeTable
+Scan
+
+##### Stream permissions
+DescribeTable
+DescribeStream
+ListStreams
+
+#### Destination Table
+##### Backfill permissions
+BatchWriteItem
+DescribeTable
+
+##### Stream permissions
+PutItem
+DeleteItem
+
+
 ### CLI options
 A plan with a single input and output table can be configured via the CLI using the following
 options. If multiple tables need to be specified, a config file can be used (See
