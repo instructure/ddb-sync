@@ -10,4 +10,5 @@ COPY . $GOPATH/src/gerrit.instructure.com/ddb-sync
 
 WORKDIR $GOPATH/src/gerrit.instructure.com/ddb-sync
 
-RUN go get .
+RUN go get -u golang.org/x/vgo
+RUN vgo install .
