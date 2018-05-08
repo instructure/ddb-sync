@@ -68,6 +68,10 @@ func (r *BackfillRecord) Request() *dynamodb.WriteRequest {
 	}
 }
 
+func (o *BackfillOperation) Preflights(_ *dynamodb.DescribeTableOutput, _ *dynamodb.DescribeTableOutput) error {
+	return nil
+}
+
 func (o *BackfillOperation) Run() error {
 	collator := ErrorCollator{
 		Cancel: o.contextCancelFunc,

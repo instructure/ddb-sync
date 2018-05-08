@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"gerrit.instructure.com/ddb-sync/config"
+	"gerrit.instructure.com/ddb-sync/log"
 )
 
 var (
@@ -26,18 +27,20 @@ type Dispatcher struct {
 func NewDispatcher(plans []config.OperationPlan) (*Dispatcher, error) {
 	var operators []*Operator
 	ctx, cancel := context.WithCancel(context.Background())
+
+	var finalErr error
 	for _, plan := range plans {
 		plan = plan.WithDefaults()
 		err := plan.Validate()
 		if err != nil {
-			cancel()
-			return nil, err
+			log.Printf("[ERROR] %v\n", err)
+			finalErr = err
 		}
 
 		operator, err := NewOperator(ctx, plan, cancel)
 		if err != nil {
-			cancel()
-			return nil, err
+			log.Printf("[ERROR] %v\n", err)
+			finalErr = err
 		}
 		operators = append(operators, operator)
 	}
@@ -46,7 +49,20 @@ func NewDispatcher(plans []config.OperationPlan) (*Dispatcher, error) {
 		Operators: operators,
 		ctx:       ctx,
 		cancel:    cancel,
-	}, nil
+	}, finalErr
+}
+
+func (d *Dispatcher) Preflights() error {
+	var finalErr error
+	for _, operator := range d.Operators {
+		err := operator.Preflights()
+		if err != nil {
+			log.Printf("[ERROR] %v\n", err)
+			finalErr = err
+		}
+	}
+
+	return finalErr
 }
 
 func (d *Dispatcher) Start() {

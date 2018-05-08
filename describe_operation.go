@@ -44,6 +44,10 @@ func NewDescribeOperation(ctx context.Context, plan config.OperationPlan, cancel
 	}, nil
 }
 
+func (o *DescribeOperation) Preflights(_ *dynamodb.DescribeTableOutput, _ *dynamodb.DescribeTableOutput) error {
+	return nil
+}
+
 func (o *DescribeOperation) Run() error {
 	collator := ErrorCollator{
 		Cancel: o.contextCancelFunc,

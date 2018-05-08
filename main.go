@@ -23,7 +23,11 @@ func main() {
 
 	dispatcher, err := NewDispatcher(plan)
 	if err != nil {
-		log.Printf("[ERROR] %v\n", err)
+		os.Exit(2)
+	}
+
+	err = dispatcher.Preflights()
+	if err != nil {
 		os.Exit(2)
 	}
 

@@ -6,9 +6,18 @@ import (
 	"sync"
 
 	"gerrit.instructure.com/ddb-sync/config"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
+// preflightRetries is set to less than defaults because it causes preflights when
+// unauthenticated to take a very long time to fail
+const preflightRetries = 7
+
 type Operation interface {
+	Preflights(*dynamodb.DescribeTableOutput, *dynamodb.DescribeTableOutput) error
 	Run() error
 	Status() string
 }
@@ -67,13 +76,53 @@ func NewOperator(ctx context.Context, plan config.OperationPlan, cancelFunc cont
 	return o, nil
 }
 
+func (o *Operator) Preflights() error {
+	inputSession, outputSession, err := o.OperationPlan.GetSessions()
+	if err != nil {
+		return err
+	}
+
+	inputClient := dynamodb.New(inputSession.Copy(aws.NewConfig().WithMaxRetries(preflightRetries)))
+	outputClient := dynamodb.New(outputSession.Copy(aws.NewConfig().WithMaxRetries(preflightRetries)))
+
+	inDescr, err := o.getTableDescription(inputClient, o.OperationPlan.Input.TableName)
+	if err != nil {
+		return err
+	}
+
+	outDescr, err := o.getTableDescription(outputClient, o.OperationPlan.Output.TableName)
+	if err != nil {
+		return err
+	}
+
+	err = o.describe.Preflights(inDescr, outDescr)
+	if err != nil {
+		return err
+	}
+
+	if o.backfill != nil {
+		err := o.backfill.Preflights(inDescr, outDescr)
+		if err != nil {
+			return err
+		}
+	}
+
+	if o.stream != nil {
+		err := o.stream.Preflights(inDescr, outDescr)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (o *Operator) Run() error {
 	err := o.describe.Run()
 	if err != nil {
 		return err
 	}
 
-	if !o.OperationPlan.Backfill.Disabled {
+	if o.backfill != nil {
 		o.operationLock.Lock()
 		o.operationPhase = BackfillPhase
 		o.operationLock.Unlock()
@@ -84,7 +133,7 @@ func (o *Operator) Run() error {
 		}
 	}
 
-	if !o.OperationPlan.Stream.Disabled {
+	if o.stream != nil {
 		o.operationLock.Lock()
 		o.operationPhase = StreamPhase
 		o.operationLock.Unlock()
@@ -118,4 +167,26 @@ func (o *Operator) Status() string {
 	default:
 		return "INTERNAL ERROR: Unknown operation status"
 	}
+}
+
+func (o *Operator) getTableDescription(client *dynamodb.DynamoDB, tableName string) (*dynamodb.DescribeTableOutput, error) {
+	input := &dynamodb.DescribeTableInput{
+		TableName: aws.String(tableName),
+	}
+	description, err := client.DescribeTableWithContext(o.context, input)
+
+	if err != nil {
+		if awsErr, ok := err.(awserr.Error); ok {
+			if awsErr.Code() == "ResourceNotFoundException" {
+				return nil, fmt.Errorf("[%s] Failed pre-flight check: table does not exist", tableName)
+			}
+			return nil, fmt.Errorf("[%s] describe table operation failed with %v", tableName, err)
+		}
+		return nil, err
+	}
+
+	if *description.Table.TableStatus != "ACTIVE" {
+		return nil, fmt.Errorf("[%s] Fails pre-flight check: table status is not active", tableName)
+	}
+	return description, nil
 }

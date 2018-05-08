@@ -63,6 +63,21 @@ func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFu
 	}, nil
 }
 
+func (o *StreamOperation) Preflights(in *dynamodb.DescribeTableOutput, _ *dynamodb.DescribeTableOutput) error {
+	streamSpecification := in.Table.StreamSpecification
+	if streamSpecification == nil {
+		return fmt.Errorf("[%s] Fails pre-flight check: stream is not enabled", *in.Table.TableName)
+	}
+	if !*streamSpecification.StreamEnabled {
+		return fmt.Errorf("[%s] Fails pre-flight check: stream is not enabled", *in.Table.TableName)
+	}
+
+	if !(*streamSpecification.StreamViewType == dynamodb.StreamViewTypeNewImage || *streamSpecification.StreamViewType == dynamodb.StreamViewTypeNewAndOldImages) {
+		return fmt.Errorf("[%s] Fails pre-flight check: stream is not a correct type 'NEW_IMAGE' or 'NEW_AND_OLD_IMAGES'", *in.Table.TableName)
+	}
+	return nil
+}
+
 func (o *StreamOperation) Run() error {
 	collator := ErrorCollator{
 		Cancel: o.contextCancelFunc,
