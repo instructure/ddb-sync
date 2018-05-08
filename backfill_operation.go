@@ -10,8 +10,6 @@ import (
 	"gerrit.instructure.com/ddb-sync/log"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
@@ -36,33 +34,12 @@ type BackfillOperation struct {
 }
 
 func NewBackfillOperation(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*BackfillOperation, error) {
-	// Base config & session (used for STS calls)
-	baseConfig := aws.NewConfig().WithRegion(plan.Input.Region).WithMaxRetries(15)
-	baseSession, err := session.NewSession(baseConfig)
+	inputSession, outputSession, err := plan.GetSessions(15)
 	if err != nil {
 		return nil, err
 	}
 
-	// Input config, session, & client (used for input-side DynamoDB calls)
-	inputConfig := baseConfig.Copy()
-	if plan.Input.RoleARN != "" {
-		inputConfig.WithCredentials(stscreds.NewCredentials(baseSession, plan.Input.RoleARN))
-	}
-	inputSession, err := session.NewSession(inputConfig)
-	if err != nil {
-		return nil, err
-	}
 	inputClient := dynamodb.New(inputSession)
-
-	// Output config, session, & client (used for output-side DynamoDB calls)
-	outputConfig := baseConfig.Copy().WithRegion(plan.Output.Region)
-	if plan.Output.RoleARN != "" {
-		outputConfig.WithCredentials(stscreds.NewCredentials(baseSession, plan.Output.RoleARN))
-	}
-	outputSession, err := session.NewSession(outputConfig)
-	if err != nil {
-		return nil, err
-	}
 	outputClient := dynamodb.New(outputSession)
 
 	// Create operation w/instantiated clients

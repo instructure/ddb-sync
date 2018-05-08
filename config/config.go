@@ -6,7 +6,10 @@ import (
 	"io"
 	"os"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/defaults"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"gopkg.in/yaml.v2"
 )
 
@@ -94,6 +97,36 @@ func (p OperationPlan) Validate() error {
 	} else {
 		return ErrInputAndOutputTablesCannotMatch
 	}
+}
+
+func (p OperationPlan) GetSessions(maxRetries int) (*session.Session, *session.Session, error) {
+	// Base config & session (used for STS calls)
+	baseConfig := aws.NewConfig().WithRegion(p.Input.Region).WithMaxRetries(maxRetries)
+	baseSession, err := session.NewSession(baseConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Input config, session, & client (used for input-side DynamoDB calls)
+	inputConfig := baseConfig.Copy()
+	if p.Input.RoleARN != "" {
+		inputConfig.WithCredentials(stscreds.NewCredentials(baseSession, p.Input.RoleARN))
+	}
+	inputSession, err := session.NewSession(inputConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Output config, session, & client (used for output-side DynamoDB calls)
+	outputConfig := baseConfig.Copy().WithRegion(p.Output.Region)
+	if p.Output.RoleARN != "" {
+		outputConfig.WithCredentials(stscreds.NewCredentials(baseSession, p.Output.RoleARN))
+	}
+	outputSession, err := session.NewSession(outputConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+	return inputSession, outputSession, nil
 }
 
 func ParseConfigFile(filePath string) ([]OperationPlan, error) {
