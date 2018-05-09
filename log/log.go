@@ -30,8 +30,8 @@ func MoveToColumn(col int) {
 	fmt.Fprintf(os.Stderr, "%s%dG", CSI, col)
 }
 
-func MoveToPreviousLine(count int) {
-	fmt.Fprintf(os.Stderr, "%s%dF", CSI, count)
+func MoveCursorUp(count int) {
+	fmt.Fprintf(os.Stderr, "%s%dA", CSI, count)
 }
 
 // END ANSI helpers
@@ -49,10 +49,11 @@ func ClearStatus() {
 }
 
 func hideStatus() {
-	MoveToColumn(0)
+	MoveToColumn(1)
 	EraseLineAfterCursor()
 	for i := 0; i < len(statusLines)-1; i++ {
-		MoveToPreviousLine(0)
+		MoveCursorUp(1)
+		MoveToColumn(1)
 		EraseLineAfterCursor()
 	}
 }
