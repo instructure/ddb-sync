@@ -15,31 +15,27 @@ pipeline {
             }
         }
 
-        stage("Run Checks") {
-            parallel {
-                  stage('Install') {
-                    steps {
-                        sh "docker-compose run --rm -T test go install ./..."
-                    }
-                }
+        stage('Install') {
+            steps {
+                sh "docker-compose run --rm -T test go install ./..."
+            }
+        }
 
-                stage('Vet') {
-                    steps {
-                        sh "docker-compose run --rm -T test go vet ./..."
-                    }
-                }
+        stage('Vet') {
+            steps {
+                sh "docker-compose run --rm -T test go vet ./..."
+            }
+        }
 
-                stage('Fmt') {
-                    steps {
-                        sh "docker-compose run --rm -T test /bin/sh -c 'gofmt -l . > bad_files.txt && test ! -s bad_files.txt'"
-                    }
-                }
+        stage('Fmt') {
+            steps {
+                sh "docker-compose run --rm -T test /bin/sh -c 'gofmt -l . > bad_files.txt && test ! -s bad_files.txt'"
+            }
+        }
 
-                stage('Test') {
-                    steps {
-                        sh "docker-compose run --rm -T test go test ./..."
-                    }
-                }
+        stage('Test') {
+            steps {
+                sh "docker-compose run --rm -T test go test ./..."
             }
         }
     }
