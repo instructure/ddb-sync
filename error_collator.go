@@ -21,11 +21,10 @@ func (c *ErrorCollator) Run() error {
 	errs := make(chan error)
 	defer close(errs)
 
-	for i := range c.Funcs {
-		f := c.Funcs[i]
-		go func() {
+	for _, f := range c.Funcs {
+		go func(f func() error) {
 			errs <- f()
-		}()
+		}(f)
 	}
 
 	var finalError error
