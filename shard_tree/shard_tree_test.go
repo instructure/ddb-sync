@@ -6,7 +6,81 @@ import (
 	"gerrit.instructure.com/ddb-sync/shard_tree"
 )
 
-func TestShardTreeHappyPath(t *testing.T) {
+func TestShardTreeAddConflictingShardsReturnsError(t *testing.T) {
+	tree := shard_tree.New()
+
+	shardSet1 := []*shard_tree.Shard{
+		&shard_tree.Shard{Id: "test-1", ParentId: "test-old"},
+	}
+	if err := tree.Add(shardSet1); err != nil {
+		t.Fatalf("Unknown error adding shard set 1: %v", err)
+	}
+
+	shardSet2 := []*shard_tree.Shard{
+		&shard_tree.Shard{Id: "test-1", ParentId: "test-conflict"},
+	}
+	if err := tree.Add(shardSet2); err != shard_tree.ErrShardConflict {
+		t.Fatalf("Expected a shard conflict error, received: %v", err)
+	}
+}
+
+func TestShardTreeMarkCompleteReturnsErrorIfMarkingShardNotPresent(t *testing.T) {
+	tree := shard_tree.New()
+	shardSet1 := []*shard_tree.Shard{
+		&shard_tree.Shard{Id: "test-1"},
+		&shard_tree.Shard{Id: "test-2"},
+		&shard_tree.Shard{Id: "test-3", ParentId: "test-1"},
+	}
+
+	unknownShard := shard_tree.Shard{Id: "test-4", ParentId: "test-1"}
+
+	tree.Add(shardSet1)
+	err := tree.ShardComplete(&unknownShard)
+
+	if err == nil {
+		t.Errorf("Expected marking shard complete in invalid condition to error, but didn't")
+	}
+
+	if err != shard_tree.ErrShardNotFound {
+		t.Errorf("Expected marking shard complete in invalid condition to ErrShardNotFound, but didn't")
+	}
+}
+
+func TestShardTreeAbleToAddNodes(t *testing.T) {
+	tree := shard_tree.New()
+
+	// Multiple Add calls
+	shardSet1 := []*shard_tree.Shard{
+		&shard_tree.Shard{Id: "test-1"},
+		&shard_tree.Shard{Id: "test-2"},
+	}
+	if err := tree.Add(shardSet1); err != nil {
+		t.Fatalf("Unknown error adding shard set 1: %v", err)
+	}
+}
+
+func TestAvailableShardsAreOnlyNodesWhenAvailable(t *testing.T) {
+	tree := shard_tree.New()
+	shardSet1 := []*shard_tree.Shard{
+		&shard_tree.Shard{Id: "test-1"},
+		&shard_tree.Shard{Id: "test-2"},
+	}
+
+	tree.Add(shardSet1)
+
+	availableShardIds := make(map[string]bool)
+	for _, shard := range tree.AvailableShards() {
+		availableShardIds[shard.Id] = true
+	}
+
+	for _, expectedId := range []string{"test-1", "test-2"} {
+		if _, exists := availableShardIds[expectedId]; !exists {
+			t.Errorf("Expected '%s' to be available, but wasn't", expectedId)
+		}
+	}
+}
+
+func TestShardTreeAbleToAddChildShards(t *testing.T) {
 	tree := shard_tree.New()
 
 	// Multiple Add calls
@@ -22,6 +96,7 @@ func TestShardTreeHappyPath(t *testing.T) {
 		&shard_tree.Shard{Id: "test-3", ParentId: "test-1"},
 		&shard_tree.Shard{Id: "test-4", ParentId: "test-1"},
 	}
+
 	if err := tree.Add(shardSet2); err != nil {
 		t.Fatalf("Unknown error adding shard set 2: %v", err)
 	}
@@ -32,6 +107,87 @@ func TestShardTreeHappyPath(t *testing.T) {
 			t.Fatalf("Expected shard %s to have parent %#v, found %#v instead", shard.Id, shardSet1[0], shard.Parent)
 		}
 	}
+}
+
+func TestAvailableShardsIncludeOnlyIncompleteAncestors(t *testing.T) {
+	tree := shard_tree.New()
+	shardSet1 := []*shard_tree.Shard{
+		&shard_tree.Shard{Id: "test-1"},
+		&shard_tree.Shard{Id: "test-2"},
+		&shard_tree.Shard{Id: "test-3", ParentId: "test-1"},
+		&shard_tree.Shard{Id: "test-4", ParentId: "test-1"},
+	}
+
+	tree.Add(shardSet1)
+
+	availableShardIds := make(map[string]bool)
+	for _, shard := range tree.AvailableShards() {
+		availableShardIds[shard.Id] = true
+	}
+
+	for _, expectedId := range []string{"test-1", "test-2"} {
+		if _, exists := availableShardIds[expectedId]; !exists {
+			t.Errorf("Expected '%s' to be available, but wasn't", expectedId)
+		}
+	}
+}
+
+func TestAbleToMarkAncestorShardComplete(t *testing.T) {
+	tree := shard_tree.New()
+	shardSet1 := []*shard_tree.Shard{
+		&shard_tree.Shard{Id: "test-1"},
+		&shard_tree.Shard{Id: "test-2"},
+		&shard_tree.Shard{Id: "test-3", ParentId: "test-1"},
+		&shard_tree.Shard{Id: "test-4", ParentId: "test-1"},
+	}
+
+	tree.Add(shardSet1)
+	err := tree.ShardComplete(shardSet1[0])
+
+	if err != nil {
+		t.Fatalf("Unknown error completing shard: %v", err)
+	}
+}
+
+func TestAvailableShardsDoesNotIncludeCompletedAncestors(t *testing.T) {
+	tree := shard_tree.New()
+	shardSet1 := []*shard_tree.Shard{
+		&shard_tree.Shard{Id: "test-1"},
+		&shard_tree.Shard{Id: "test-2"},
+		&shard_tree.Shard{Id: "test-3", ParentId: "test-1"},
+		&shard_tree.Shard{Id: "test-4", ParentId: "test-1"},
+	}
+
+	tree.Add(shardSet1)
+	tree.ShardComplete(shardSet1[0])
+
+	nowAvailableShardIds := make(map[string]bool)
+	for _, shard := range tree.AvailableShards() {
+		nowAvailableShardIds[shard.Id] = true
+	}
+
+	for _, expectedId := range []string{"test-3", "test-4", "test-2"} {
+		if _, exists := nowAvailableShardIds[expectedId]; !exists {
+			t.Errorf("Expected '%s' to be available, but wasn't", expectedId)
+		}
+		delete(nowAvailableShardIds, expectedId)
+	}
+
+	for extraneousId := range nowAvailableShardIds {
+		t.Errorf("Extraneous shard returned as available: '%s'", extraneousId)
+	}
+}
+
+func TestShardTreeGetAvailableShardsDoesNotReturnExtraAvailableShards(t *testing.T) {
+	tree := shard_tree.New()
+	shardSet1 := []*shard_tree.Shard{
+		&shard_tree.Shard{Id: "test-1"},
+		&shard_tree.Shard{Id: "test-2"},
+		&shard_tree.Shard{Id: "test-3", ParentId: "test-1"},
+		&shard_tree.Shard{Id: "test-4", ParentId: "test-1"},
+	}
+
+	tree.Add(shardSet1)
 
 	// Verify available shards
 	availableShardIds := make(map[string]bool)
@@ -49,72 +205,61 @@ func TestShardTreeHappyPath(t *testing.T) {
 	for extraneousId := range availableShardIds {
 		t.Errorf("Extraneous shard returned as available: '%s'", extraneousId)
 	}
+}
 
-	// No additional shards available until some complete
-	for _, invalidShard := range tree.AvailableShards() {
-		t.Errorf("Status quo. Shard available, but shouldn't be: '%s'", invalidShard.Id)
+func TestShardTreeDoesNotReturnDifferentAvailableShards(t *testing.T) {
+	tree := shard_tree.New()
+	shardSet1 := []*shard_tree.Shard{
+		&shard_tree.Shard{Id: "test-1"},
+		&shard_tree.Shard{Id: "test-2"},
+		&shard_tree.Shard{Id: "test-3", ParentId: "test-1"},
+		&shard_tree.Shard{Id: "test-4", ParentId: "test-1"},
 	}
 
-	// Terminal shard complete ("test-2")
-	if err := tree.ShardComplete(shardSet1[1]); err != nil {
-		t.Fatalf("Unknown error completing shard: %v", err)
-	}
+	tree.Add(shardSet1)
 
-	// No additional shards available ("test-2" has no children)
-	for _, invalidShard := range tree.AvailableShards() {
-		t.Errorf("Terminal complete. Shard available, but shouldn't be: '%s'", invalidShard.Id)
-	}
-
-	// Parent shard complete ("test-1")
-	if err := tree.ShardComplete(shardSet1[0]); err != nil {
-		t.Fatalf("Unknown error completing shard: %v", err)
-	}
-
-	// Verify now available shards
-	nowAvailableShardIds := make(map[string]bool)
+	// Verify available shards
+	availableShardIds := make(map[string]bool)
 	for _, shard := range tree.AvailableShards() {
-		nowAvailableShardIds[shard.Id] = true
+		availableShardIds[shard.Id] = true
 	}
 
-	for _, expectedId := range []string{"test-3", "test-4"} {
-		if _, exists := nowAvailableShardIds[expectedId]; !exists {
+	for _, expectedId := range []string{"test-1", "test-2"} {
+		if _, exists := availableShardIds[expectedId]; !exists {
 			t.Errorf("Expected '%s' to be available, but wasn't", expectedId)
 		}
-		delete(nowAvailableShardIds, expectedId)
 	}
 
-	for extraneousId := range nowAvailableShardIds {
-		t.Errorf("Extraneous shard returned as available: '%s'", extraneousId)
-	}
-
-	// Complete remaining shards
-	if err := tree.ShardComplete(shardSet2[0]); err != nil {
-		t.Fatalf("Unknown error completing shard: %v", err)
-	}
-	if err := tree.ShardComplete(shardSet2[1]); err != nil {
-		t.Fatalf("Unknown error completing shard: %v", err)
-	}
-
-	// No additional shards available (all shards complete)
 	for _, invalidShard := range tree.AvailableShards() {
-		t.Errorf("Shards complete. Shard available, but shouldn't be: '%s'", invalidShard.Id)
+		t.Errorf("Shard available, but shouldn't be: '%s'", invalidShard.Id)
 	}
 }
 
-func TestShardTreeAddConflictingShards(t *testing.T) {
+func TestMarkingLeafShardCompleteReturnsNoNewAvailableShards(t *testing.T) {
 	tree := shard_tree.New()
-
 	shardSet1 := []*shard_tree.Shard{
-		&shard_tree.Shard{Id: "test-1", ParentId: "test-old"},
-	}
-	if err := tree.Add(shardSet1); err != nil {
-		t.Fatalf("Unknown error adding shard set 1: %v", err)
+		&shard_tree.Shard{Id: "test-1"},
+		&shard_tree.Shard{Id: "test-2"},
+		&shard_tree.Shard{Id: "test-3", ParentId: "test-1"},
+		&shard_tree.Shard{Id: "test-4", ParentId: "test-1"},
 	}
 
-	shardSet2 := []*shard_tree.Shard{
-		&shard_tree.Shard{Id: "test-1", ParentId: "test-conflict"},
+	tree.Add(shardSet1)
+	tree.ShardComplete(shardSet1[3])
+
+	// Verify available shards
+	availableShardIds := make(map[string]bool)
+	for _, shard := range tree.AvailableShards() {
+		availableShardIds[shard.Id] = true
 	}
-	if err := tree.Add(shardSet2); err != shard_tree.ErrShardConflict {
-		t.Fatalf("Expected a shard conflict error, received: %v", err)
+
+	for _, expectedId := range []string{"test-1", "test-2"} {
+		if _, exists := availableShardIds[expectedId]; !exists {
+			t.Errorf("Expected '%s' to be available, but wasn't", expectedId)
+		}
+	}
+
+	for _, invalidShard := range tree.AvailableShards() {
+		t.Errorf("Shard available, but shouldn't be: '%s'", invalidShard.Id)
 	}
 }
