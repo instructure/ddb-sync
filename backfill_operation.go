@@ -26,9 +26,9 @@ type BackfillOperation struct {
 	inputClient  *dynamodb.DynamoDB
 	outputClient *dynamodb.DynamoDB
 
-	describeStatusEnum int32
-	scanStatusEnum     int32
-	writeStatusEnum    int32
+	describing Phase
+	scanning   Phase
+	writing    Phase
 
 	approximateItemCount      int64
 	approximateTableSizeBytes int64
@@ -78,49 +78,56 @@ func (o *BackfillOperation) Run() error {
 	collator.Register(o.scan) // TODO: FANOUT?
 	collator.Register(o.batchWrite)
 
-	return collator.Run()
+	finalErr := collator.Run()
+	return finalErr
 }
 
 func (o *BackfillOperation) Status() string {
-	inputDescription := ""
-	if o.Described() {
-		inputDescription = fmt.Sprintf(" ~%d items (~%d bytes)", o.ApproximateItemCount(), o.ApproximateTableSizeBytes())
+	status := "Backfilling"
+	if o.describing.StatusCode() > 3 || o.scanning.StatusCode() > 3 || o.writing.StatusCode() > 3 {
+		status = "Backfill failed"
 	}
 
-	status := fmt.Sprintf("Backfilling%s [%s] ⇨ [%s]:  ", inputDescription, o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
+	inputDescription := ""
+	if o.describing.StatusCode() > 0 {
+		inputDescription = fmt.Sprintf(" ~%d items (~%d bytes)", o.ApproximateItemCount(), o.ApproximateTableSizeBytes())
+	}
+	status += fmt.Sprintf("%s [%s] ⇨ [%s]:  ", inputDescription, o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
 
-	if o.Scanning() || o.ScanComplete() {
+	if o.scanning.StatusCode() > 0 {
 		status += fmt.Sprintf("%d read", o.ScanCount())
 
 		if o.BufferCapacity() > 0 {
 			status += fmt.Sprintf(" ⤏ (buffer:% 3d%%)", 100*o.BufferFill()/o.BufferCapacity())
 		}
 
-		if o.Writing() || o.WriteComplete() {
+		if o.writing.StatusCode() > 0 {
 			status += fmt.Sprintf(" ⤏ %d written", o.WriteCount())
 		}
 	} else {
-		status += "initializing…"
+		status = "initializing…"
 	}
 
 	return status
 }
 
 func (o *BackfillOperation) describe() error {
+	o.describing.Start()
 	output, err := o.inputClient.DescribeTableWithContext(o.context, &dynamodb.DescribeTableInput{TableName: aws.String(o.OperationPlan.Input.TableName)})
 	if err != nil {
+		o.describing.Error()
 		return fmt.Errorf("[%s] ⇨ [%s]: Backfill failed: (DescribeTable) %v", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, err)
 	}
 
 	atomic.StoreInt64(&o.approximateItemCount, *output.Table.ItemCount)
 	atomic.StoreInt64(&o.approximateTableSizeBytes, *output.Table.TableSizeBytes)
-	atomic.StoreInt32(&o.describeStatusEnum, 1)
+	o.describing.Finish()
 	return nil
 }
 
 func (o *BackfillOperation) scan() error {
 	defer close(o.c)
-	atomic.StoreInt32(&o.scanStatusEnum, 1)
+	o.scanning.Start()
 
 	input := &dynamodb.ScanInput{
 		TableName: &o.OperationPlan.Input.TableName,
@@ -154,6 +161,7 @@ func (o *BackfillOperation) scan() error {
 
 	err := o.inputClient.ScanPagesWithContext(o.context, input, scanHandler)
 	if err != nil {
+		o.scanning.Error()
 		return fmt.Errorf("[%s] ⇨ [%s]: Backfill failed: (Scan) %v", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, err)
 	}
 
@@ -163,7 +171,7 @@ func (o *BackfillOperation) scan() error {
 		return o.context.Err()
 
 	default:
-		atomic.StoreInt32(&o.scanStatusEnum, 2)
+		o.scanning.Finish()
 		return nil
 	}
 }
@@ -181,11 +189,13 @@ func (o *BackfillOperation) batchWrite() error {
 	err := collator.Run()
 	if err == nil {
 		log.Printf("[%s] ⇨ [%s]: Backfill complete!", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
-		atomic.StoreInt32(&o.writeStatusEnum, 2)
+
+		o.writing.Finish()
 		return nil
 	}
 
 	if err != context.Canceled {
+		o.writing.Error()
 		return fmt.Errorf("[%s] ⇨ [%s]: Backfill failed: (BatchWriteItem) %v", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, err)
 	}
 
@@ -193,7 +203,7 @@ func (o *BackfillOperation) batchWrite() error {
 }
 
 func (o *BackfillOperation) signalBackfillStart() {
-	atomic.StoreInt32(&o.writeStatusEnum, 1)
+	o.writing.Start()
 	log.Printf("[%s] ⇨ [%s]: Backfill started…", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
 }
 
@@ -263,10 +273,6 @@ func (o *BackfillOperation) sendBatch(batch map[string][]*dynamodb.WriteRequest)
 	return nil
 }
 
-func (o *BackfillOperation) Described() bool {
-	return atomic.LoadInt32(&o.describeStatusEnum) == 1
-}
-
 func (o *BackfillOperation) ApproximateItemCount() int64 {
 	return atomic.LoadInt64(&o.approximateItemCount)
 }
@@ -283,26 +289,10 @@ func (o *BackfillOperation) WriteCount() int64 {
 	return atomic.LoadInt64(&o.writeCount)
 }
 
-func (o *BackfillOperation) Scanning() bool {
-	return atomic.LoadInt32(&o.scanStatusEnum) == 1
-}
-
-func (o *BackfillOperation) ScanComplete() bool {
-	return atomic.LoadInt32(&o.scanStatusEnum) == 2
-}
-
 func (o *BackfillOperation) BufferFill() int {
 	return len(o.c)
 }
 
 func (o *BackfillOperation) BufferCapacity() int {
 	return cap(o.c)
-}
-
-func (o *BackfillOperation) Writing() bool {
-	return atomic.LoadInt32(&o.writeStatusEnum) == 1
-}
-
-func (o *BackfillOperation) WriteComplete() bool {
-	return atomic.LoadInt32(&o.writeStatusEnum) == 2
 }

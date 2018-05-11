@@ -25,8 +25,6 @@ type StreamOperation struct {
 	inputClient              *dynamodbstreams.DynamoDBStreams
 	outputClient             *dynamodb.DynamoDB
 
-	writeStatusEnum int32
-
 	receivedCount int64
 	writeCount    int64
 
@@ -35,6 +33,9 @@ type StreamOperation struct {
 
 	c         chan dynamodbstreams.Record
 	streamARN string
+
+	streamRead Phase
+	writing    Phase
 
 	dispatcher *dispatcher.Dispatcher
 }
@@ -73,22 +74,27 @@ func (o *StreamOperation) Run() error {
 }
 
 func (o *StreamOperation) Status() string {
-	status := ""
-	if o.Writing() {
-		status += fmt.Sprintf("%s [%s] ⇨ [%s]:", o.dispatcher.Status(), o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
+	status := o.dispatcher.Status()
+	if o.streamRead.StatusCode() > 3 || o.writing.StatusCode() > 3 {
+		status = "Stream failed"
+	}
+
+	if o.streamRead.StatusCode() > 0 {
+		status += fmt.Sprintf(" [%s] ⇨ [%s]:", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
 
 		status += fmt.Sprintf("  %d received ⤏ ", o.ReceivedCount())
 
 		if o.BufferCapacity() > 0 {
 			status += fmt.Sprintf(" (buffer:% 3d%%) ⤏ ", 100*o.BufferFill()/o.BufferCapacity())
 		}
-		status += fmt.Sprintf(" %d written", o.WriteCount())
+		if o.writing.StatusCode() > 0 {
+			status += fmt.Sprintf(" %d written", o.WriteCount())
 
-		status += fmt.Sprintf(" latencies: record %s", o.writeLatency.Status())
-
-		status += fmt.Sprintf(" - query %s", o.checkLatency.Status())
+			status += fmt.Sprintf(" latencies: record %s", o.writeLatency.Status())
+			status += fmt.Sprintf(" - query %s", o.checkLatency.Status())
+		}
 	}
-	if o.WriteComplete() {
+	if o.writing.StatusCode() == 2 {
 		status += fmt.Sprintf("[%s] ⇨ [%s] stream write complete (%d items)", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, o.WriteCount())
 	}
 
@@ -98,6 +104,7 @@ func (o *StreamOperation) Status() string {
 func (o *StreamOperation) readStream() error {
 	defer close(o.c)
 	log.Printf("[%s] ⇨ [%s]: Streaming started…", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
+	o.streamRead.Start()
 
 	err := o.lookupLatestStreamARN(o.OperationPlan.Input.TableName)
 	if err != nil {
@@ -120,6 +127,9 @@ func (o *StreamOperation) readStream() error {
 	err = o.dispatcher.RunWorkers()
 	if err == nil {
 		log.Printf("[%s] ⇨ [%s]: Stream closed…", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
+		o.streamRead.Finish()
+	} else {
+		o.streamRead.Error()
 	}
 
 	return err
@@ -187,7 +197,7 @@ func (o *StreamOperation) lookupLatestStreamARN(tableName string) error {
 }
 
 func (o *StreamOperation) writeRecords() error {
-	atomic.StoreInt32(&o.writeStatusEnum, 1)
+	o.writing.Start()
 	for record := range o.c {
 		o.writeLatency.Update(*record.Dynamodb.ApproximateCreationDateTime)
 		if *record.EventName == "REMOVE" {
@@ -213,7 +223,7 @@ func (o *StreamOperation) writeRecords() error {
 		o.markItemReceived(record)
 	}
 
-	atomic.StoreInt32(&o.writeStatusEnum, 2)
+	o.writing.Finish()
 
 	return nil
 }
@@ -228,14 +238,6 @@ func (o *StreamOperation) BufferCapacity() int {
 
 func (o *StreamOperation) ReceivedCount() int64 {
 	return atomic.LoadInt64(&o.receivedCount)
-}
-
-func (o *StreamOperation) Writing() bool {
-	return atomic.LoadInt32(&o.writeStatusEnum) == 1
-}
-
-func (o *StreamOperation) WriteComplete() bool {
-	return atomic.LoadInt32(&o.writeStatusEnum) == 2
 }
 
 func (o *StreamOperation) WriteCount() int64 {
