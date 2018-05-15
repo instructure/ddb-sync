@@ -3,8 +3,13 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync/atomic"
 
 	"gerrit.instructure.com/ddb-sync/config"
+	"gerrit.instructure.com/ddb-sync/dispatcher"
+	"gerrit.instructure.com/ddb-sync/log"
+	"gerrit.instructure.com/ddb-sync/shard_tree"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodbstreams"
@@ -19,21 +24,40 @@ type StreamOperation struct {
 	inputClient              *dynamodbstreams.DynamoDBStreams
 	outputClient             *dynamodb.DynamoDB
 
-	readStatusEnum int32
+	readStatusEnum  int32
+	writeStatusEnum int32
 
 	receivedCount int64
 	writeCount    int64
 
-	c chan dynamodbstreams.Record
+	latency latencyLock
+
+	c         chan dynamodbstreams.Record
+	streamARN string
+
+	dispatcher *dispatcher.Dispatcher
 }
 
 func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*StreamOperation, error) {
+	inputSession, outputSession, err := plan.GetSessions()
+	if err != nil {
+		return nil, err
+	}
+
+	inputClient := dynamodbstreams.New(inputSession)
+	inputDescribeTableClient := dynamodb.New(inputSession)
+	outputClient := dynamodb.New(outputSession)
+
 	return &StreamOperation{
 		OperationPlan:     plan,
 		context:           ctx,
 		contextCancelFunc: cancelFunc,
 
-		c: make(chan dynamodbstreams.Record),
+		c: make(chan dynamodbstreams.Record, 3500),
+
+		inputClient:              inputClient,
+		inputDescribeTableClient: inputDescribeTableClient,
+		outputClient:             outputClient,
 	}, nil
 }
 
@@ -48,15 +72,58 @@ func (o *StreamOperation) Run() error {
 }
 
 func (o *StreamOperation) Status() string {
-	// TODO: RETURN THE CURRENT STATUS
-	return "NOT IMPLEMENTED"
+	return o.dispatcher.Status()
 }
 
 func (o *StreamOperation) readStream() error {
 	defer close(o.c)
+	atomic.StoreInt32(&o.readStatusEnum, 1)
+	log.Printf("[INFO] reading stream for %s", o.OperationPlan.Input.TableName)
 
-	// TODO: READ ALL SHARDS IN THE STREAM
-	return errors.New("NOT IMPLEMENTED")
+	err := o.lookupLatestStreamARN(o.OperationPlan.Input.TableName)
+	if err != nil {
+		return err
+	}
+
+	dispatcherInput := &dispatcher.DispatchInput{
+		Context:           o.context,
+		ContextCancelFunc: o.contextCancelFunc,
+
+		InputTableName: o.OperationPlan.Input.TableName,
+		StreamARN:      o.streamARN,
+		Client:         o.inputClient,
+
+		ShardProcessor: o.processShard,
+	}
+
+	o.dispatcher = dispatcher.New(dispatcherInput)
+
+	err = o.dispatcher.RunWorkers()
+	if err == nil {
+		log.Printf("[INFO] %s stream closed, scan complete!", o.OperationPlan.Input.TableName)
+	}
+
+	return err
+}
+
+func (o *StreamOperation) processShard(shard *shard_tree.Shard) error {
+	return fmt.Errorf("NOT IMPLEMENTED")
+}
+
+func (o *StreamOperation) lookupLatestStreamARN(tableName string) error {
+	tableOutput, err := o.inputDescribeTableClient.DescribeTableWithContext(
+		o.context,
+		&dynamodb.DescribeTableInput{
+			TableName: &o.OperationPlan.Input.TableName,
+		},
+	)
+
+	if err != nil {
+		return err
+	}
+
+	o.streamARN = *tableOutput.Table.LatestStreamArn
+	return nil
 }
 
 func (o *StreamOperation) writeRecords() error {

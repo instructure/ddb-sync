@@ -107,6 +107,10 @@ func (t *ShardTree) AvailableShards() []*Shard {
 	return availableShards
 }
 
+func (t *ShardTree) Count() int {
+	return len(t.shardStatuses)
+}
+
 func (t *ShardTree) availableAncestor(shard *Shard) (*Shard, error) {
 	status := t.shardStatuses[shard.Id]
 
