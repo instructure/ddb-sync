@@ -9,6 +9,7 @@ var (
 	ErrShardConflict = errors.New("Conflicting shard already exists in tree")
 
 	ErrAncestorInProgress = errors.New("Ancestor in-progress")
+	ErrAncestorIncomplete = errors.New("Ancestor incomplete")
 )
 
 type Shard struct {
@@ -75,6 +76,12 @@ func (t *ShardTree) ShardComplete(shard *Shard) error {
 	shardStatus := t.shardStatuses[shard.Id]
 	if shardStatus == nil {
 		return ErrShardNotFound
+	}
+
+	if parentStatus, present := t.shardStatuses[shard.ParentId]; present {
+		if !parentStatus.Complete {
+			return ErrAncestorIncomplete
+		}
 	}
 
 	shardStatus.InProgress = false
