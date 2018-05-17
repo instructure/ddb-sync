@@ -23,13 +23,15 @@ pipeline {
 
         stage('Vet') {
             steps {
+                echo 'Running `go vet`…'
                 sh "docker-compose run --rm -T test vgo vet ./..."
             }
         }
 
         stage('Fmt') {
             steps {
-                sh "docker-compose run --rm -T test /bin/sh -c 'gofmt -l . > bad_files.txt && test ! -s bad_files.txt'"
+                echo 'Running `go fmt`…'
+                sh "docker-compose run --rm -T test /bin/sh -c 'gofmt -e -d . | tee /dev/stderr > bad_files.txt && test ! -s bad_files.txt'"
             }
         }
 
@@ -41,7 +43,7 @@ pipeline {
     }
 
     post {
-        always {
+        cleanup {
             sh "docker-compose down --remove-orphans --rmi=all --volumes"
         }
     }
