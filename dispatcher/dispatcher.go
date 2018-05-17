@@ -98,6 +98,9 @@ loop:
 }
 
 func (d *Dispatcher) Status() string {
+	if d == nil {
+		return "Initializing"
+	}
 	return fmt.Sprintf("Streaming from %d shard(s), %d/%d remaining", d.ActiveWorkerCount(), int32(d.tree.Count())-d.DispatchedCount(), d.tree.Count())
 }
 
