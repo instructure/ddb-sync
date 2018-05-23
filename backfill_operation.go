@@ -37,7 +37,7 @@ type BackfillOperation struct {
 }
 
 func NewBackfillOperation(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*BackfillOperation, error) {
-	inputSession, outputSession, err := plan.GetSessions(15)
+	inputSession, outputSession, err := plan.GetSessions()
 	if err != nil {
 		return nil, err
 	}

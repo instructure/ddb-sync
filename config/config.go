@@ -13,6 +13,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+const MaxRetries int = 15
+
 var (
 	ErrInputRegionRequired    = errors.New("Input region is required")
 	ErrInputTableNameRequired = errors.New("Input table name is required")
@@ -99,9 +101,9 @@ func (p OperationPlan) Validate() error {
 	}
 }
 
-func (p OperationPlan) GetSessions(maxRetries int) (*session.Session, *session.Session, error) {
+func (p OperationPlan) GetSessions() (*session.Session, *session.Session, error) {
 	// Base config & session (used for STS calls)
-	baseConfig := aws.NewConfig().WithRegion(p.Input.Region).WithMaxRetries(maxRetries)
+	baseConfig := aws.NewConfig().WithRegion(p.Input.Region).WithMaxRetries(MaxRetries)
 	baseSession, err := session.NewSession(baseConfig)
 	if err != nil {
 		return nil, nil, err
