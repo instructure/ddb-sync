@@ -32,7 +32,8 @@ type BackfillOperation struct {
 	approximateItemCount      int64
 	approximateTableSizeBytes int64
 	scanCount                 int64
-	writeCount                int64
+
+	writeRateTracker *RateTracker
 }
 
 func NewBackfillOperation(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*BackfillOperation, error) {
@@ -54,6 +55,8 @@ func NewBackfillOperation(ctx context.Context, plan config.OperationPlan, cancel
 
 		inputClient:  inputClient,
 		outputClient: outputClient,
+
+		writeRateTracker: NewRateTracker(3 * time.Second),
 	}, nil
 }
 
@@ -74,22 +77,18 @@ func (o *BackfillOperation) Preflights(_ *dynamodb.DescribeTableOutput, _ *dynam
 }
 
 func (o *BackfillOperation) Run() error {
+	o.writeRateTracker.Start()
+	defer o.writeRateTracker.Stop()
+
 	collator := ErrorCollator{
 		Cancel: o.contextCancelFunc,
 	}
-	collator.Register(o.scan) // TODO: FANOUT?
+	collator.Register(o.scan)
 	collator.Register(o.batchWrite)
 
 	finalErr := collator.Run()
+
 	return finalErr
-}
-
-func (o *BackfillOperation) initialized() bool {
-	return o.scanning.Running() || o.scanning.Complete() || o.writing.Running()
-}
-
-func (o *BackfillOperation) errored() bool {
-	return o.scanning.Errored() || o.writing.Errored()
 }
 
 func (o *BackfillOperation) Status(s *status.Status) {
@@ -98,10 +97,10 @@ func (o *BackfillOperation) Status(s *status.Status) {
 	} else if o.errored() {
 		s.Backfill = "-ERRORED-"
 	} else {
-		s.Rate = "TODO"
+		s.Rate = o.writeRateTracker.RecordsPerSecond()
 
 		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
-		writeCount := fmt.Sprintf("%d written", o.WriteCount())
+		writeCount := fmt.Sprintf("%d written", o.writeRateTracker.Count())
 
 		s.Backfill = fmt.Sprintf("%s %s", s.BufferStatus(buffer), writeCount)
 	}
@@ -247,10 +246,10 @@ func (o *BackfillOperation) sendBatch(batch map[string][]*dynamodb.WriteRequest)
 	// self-reinvoking
 	if len(result.UnprocessedItems) > 0 && len(result.UnprocessedItems[o.OperationPlan.Output.TableName]) > 0 {
 		writeCount := batchLength - len(result.UnprocessedItems[o.OperationPlan.Output.TableName])
-		atomic.AddInt64(&o.writeCount, int64(writeCount))
+		o.writeRateTracker.Increment(int64(writeCount))
 		return o.sendBatch(result.UnprocessedItems)
 	}
-	atomic.AddInt64(&o.writeCount, int64(batchLength))
+	o.writeRateTracker.Increment(int64(batchLength))
 
 	return nil
 }
@@ -267,14 +266,14 @@ func (o *BackfillOperation) ScanCount() int64 {
 	return atomic.LoadInt64(&o.scanCount)
 }
 
-func (o *BackfillOperation) WriteCount() int64 {
-	return atomic.LoadInt64(&o.writeCount)
-}
-
 func (o *BackfillOperation) BufferFill() int {
 	return len(o.c)
 }
 
 func (o *BackfillOperation) BufferCapacity() int {
 	return cap(o.c)
+}
+
+func (o *BackfillOperation) errored() bool {
+	return o.scanning.Errored() || o.writing.Errored()
 }

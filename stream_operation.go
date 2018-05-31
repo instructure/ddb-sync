@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"gerrit.instructure.com/ddb-sync/config"
 	"gerrit.instructure.com/ddb-sync/log"
@@ -26,7 +27,6 @@ type StreamOperation struct {
 	outputClient             *dynamodb.DynamoDB
 
 	receivedCount int64
-	writeCount    int64
 
 	writeLatency latencyLock
 
@@ -37,6 +37,8 @@ type StreamOperation struct {
 	writing    Phase
 
 	watcher *shard_watcher.Watcher
+
+	writeRateTracker *RateTracker
 }
 
 func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*StreamOperation, error) {
@@ -59,6 +61,8 @@ func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFu
 		inputClient:              inputClient,
 		inputDescribeTableClient: inputDescribeTableClient,
 		outputClient:             outputClient,
+
+		writeRateTracker: NewRateTracker(3 * time.Second),
 	}, nil
 }
 
@@ -78,6 +82,9 @@ func (o *StreamOperation) Preflights(in *dynamodb.DescribeTableOutput, _ *dynamo
 }
 
 func (o *StreamOperation) Run() error {
+	o.writeRateTracker.Start()
+	defer o.writeRateTracker.Stop()
+
 	collator := ErrorCollator{
 		Cancel: o.contextCancelFunc,
 	}
@@ -91,10 +98,10 @@ func (o *StreamOperation) Status(s *status.Status) {
 	if !o.watcher.Running() {
 		s.Stream = "-PENDING-"
 	} else if o.writing.Running() {
-		s.Rate = fmt.Sprintf("5/s (%s latent)", o.writeLatency.Status())
+		s.Rate = fmt.Sprintf("%s (%s latent)", o.writeRateTracker.RecordsPerSecond(), o.writeLatency.Status())
 
 		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
-		writeCount := fmt.Sprintf("%d written", o.WriteCount())
+		writeCount := fmt.Sprintf("%d written", o.writeRateTracker.Count())
 
 		s.Stream = fmt.Sprintf("%s %s", s.BufferStatus(buffer), writeCount)
 	} else if o.writing.Complete() {
@@ -243,10 +250,6 @@ func (o *StreamOperation) ReceivedCount() int64 {
 	return atomic.LoadInt64(&o.receivedCount)
 }
 
-func (o *StreamOperation) WriteCount() int64 {
-	return atomic.LoadInt64(&o.writeCount)
-}
-
 func (o *StreamOperation) markItemReceived(record dynamodbstreams.Record) {
-	atomic.AddInt64(&o.writeCount, 1)
+	o.writeRateTracker.Increment(1)
 }
