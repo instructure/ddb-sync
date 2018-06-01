@@ -4,11 +4,12 @@ import (
 	"context"
 	"os"
 	"os/signal"
-	"strings"
 	"time"
 
 	"gerrit.instructure.com/ddb-sync/log"
 )
+
+const displayTickerTime = 500 * time.Millisecond
 
 var StopSignals = []os.Signal{
 	os.Interrupt,
@@ -72,7 +73,7 @@ func StartSignalHandler(dispatcher *Dispatcher) {
 }
 
 func StartDisplayTicker(dispatcher *Dispatcher) *time.Ticker {
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(displayTickerTime)
 	go func() {
 		displayStatus(dispatcher)
 		for range ticker.C {
@@ -83,8 +84,8 @@ func StartDisplayTicker(dispatcher *Dispatcher) *time.Ticker {
 }
 
 func displayStatus(dispatcher *Dispatcher) {
-	statuses := dispatcher.Statuses()
+	statusSet := dispatcher.Statuses()
 
 	log.ClearStatus()
-	log.StatusPrintln(strings.Join(statuses, "\n"))
+	log.StatusPrint(statusSet)
 }

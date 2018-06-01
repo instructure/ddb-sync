@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"sync/atomic"
-	"time"
 
 	"gerrit.instructure.com/ddb-sync/config"
 	"gerrit.instructure.com/ddb-sync/log"
 	"gerrit.instructure.com/ddb-sync/shard_tree"
 	"gerrit.instructure.com/ddb-sync/shard_watcher"
+	"gerrit.instructure.com/ddb-sync/status"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -28,7 +28,6 @@ type StreamOperation struct {
 	receivedCount int64
 	writeCount    int64
 
-	checkLatency latencyLock
 	writeLatency latencyLock
 
 	c         chan dynamodbstreams.Record
@@ -88,32 +87,22 @@ func (o *StreamOperation) Run() error {
 	return collator.Run()
 }
 
-func (o *StreamOperation) Status() string {
-	status := o.watcher.Status()
-	if o.streamRead.StatusCode() > 3 || o.writing.StatusCode() > 3 {
-		status = "Stream failed"
+func (o *StreamOperation) Status(s *status.Status) {
+	if !o.watcher.Running() {
+		s.Stream = "-PENDING-"
+	} else if o.writing.Running() {
+		s.Rate = fmt.Sprintf("5/s (%s latent)", o.writeLatency.Status())
+
+		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
+		writeCount := fmt.Sprintf("%d written", o.WriteCount())
+
+		s.Stream = fmt.Sprintf("%s %s", s.BufferStatus(buffer), writeCount)
+	} else if o.writing.Complete() {
+		s.Stream = "-COMPLETE-"
+	} else if o.writing.Errored() || o.streamRead.Errored() {
+		s.Stream = "-ERRORED-"
 	}
 
-	if o.streamRead.StatusCode() > 0 {
-		status += fmt.Sprintf(" [%s] ⇨ [%s]:", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
-
-		status += fmt.Sprintf("  %d received ⤏ ", o.ReceivedCount())
-
-		if o.BufferCapacity() > 0 {
-			status += fmt.Sprintf(" (buffer:% 3d%%) ⤏ ", 100*o.BufferFill()/o.BufferCapacity())
-		}
-		if o.writing.StatusCode() > 0 {
-			status += fmt.Sprintf(" %d written", o.WriteCount())
-
-			status += fmt.Sprintf(" latencies: record %s", o.writeLatency.Status())
-			status += fmt.Sprintf(" - query %s", o.checkLatency.Status())
-		}
-	}
-	if o.writing.StatusCode() == 2 {
-		status += fmt.Sprintf("[%s] ⇨ [%s] stream write complete (%d items)", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, o.WriteCount())
-	}
-
-	return status
 }
 
 func (o *StreamOperation) readStream() error {
@@ -174,7 +163,6 @@ func (o *StreamOperation) processShard(shard *shard_tree.Shard) error {
 
 	done := o.context.Done()
 	for recordOutput.NextShardIterator != nil && *recordOutput.NextShardIterator != "" {
-		o.checkLatency.Update(time.Now())
 		for _, record := range recordOutput.Records {
 			atomic.AddInt64(&o.receivedCount, 1)
 			select {

@@ -85,3 +85,15 @@ func (p *Phase) Status() string {
 	}
 	return ""
 }
+
+func (p *Phase) Running() bool {
+	return p.StatusCode() == Started
+}
+
+func (p *Phase) Complete() bool {
+	return p.StatusCode() == Finished
+}
+
+func (p *Phase) Errored() bool {
+	return p.StatusCode() == Errored
+}

@@ -10,6 +10,7 @@ import (
 
 	"gerrit.instructure.com/ddb-sync/config"
 	"gerrit.instructure.com/ddb-sync/log"
+	"gerrit.instructure.com/ddb-sync/status"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
@@ -83,30 +84,27 @@ func (o *BackfillOperation) Run() error {
 	return finalErr
 }
 
-func (o *BackfillOperation) Status() string {
-	status := "Backfilling"
-	if o.scanning.StatusCode() > 3 || o.writing.StatusCode() > 3 {
-		status = "Backfill failed"
-	}
+func (o *BackfillOperation) initialized() bool {
+	return o.scanning.Running() || o.scanning.Complete() || o.writing.Running()
+}
 
-	inputDescription := ""
-	status += fmt.Sprintf("%s [%s] ⇨ [%s]:  ", inputDescription, o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
+func (o *BackfillOperation) errored() bool {
+	return o.scanning.Errored() || o.writing.Errored()
+}
 
-	if o.scanning.StatusCode() > 0 {
-		status += fmt.Sprintf("%d read", o.ScanCount())
-
-		if o.BufferCapacity() > 0 {
-			status += fmt.Sprintf(" ⤏ (buffer:% 3d%%)", 100*o.BufferFill()/o.BufferCapacity())
-		}
-
-		if o.writing.StatusCode() > 0 {
-			status += fmt.Sprintf(" ⤏ %d written", o.WriteCount())
-		}
+func (o *BackfillOperation) Status(s *status.Status) {
+	if o.writing.Complete() {
+		s.Backfill = "-COMPLETE-"
+	} else if o.errored() {
+		s.Backfill = "-ERRORED-"
 	} else {
-		status = "initializing…"
-	}
+		s.Rate = "TODO"
 
-	return status
+		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
+		writeCount := fmt.Sprintf("%d written", o.WriteCount())
+
+		s.Backfill = fmt.Sprintf("%s %s", s.BufferStatus(buffer), writeCount)
+	}
 }
 
 func (o *BackfillOperation) scan() error {

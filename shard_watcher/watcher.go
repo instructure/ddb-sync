@@ -97,11 +97,8 @@ loop:
 	return finalErr
 }
 
-func (w *Watcher) Status() string {
-	if w == nil {
-		return "Initializing"
-	}
-	return fmt.Sprintf("Streaming from %d shard(s), %d/%d remaining", w.ActiveWorkerCount(), int32(w.tree.Count())-w.DispatchedCount(), w.tree.Count())
+func (w *Watcher) Running() bool {
+	return w != nil
 }
 
 func (w *Watcher) DispatchedCount() int32 {

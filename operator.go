@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"gerrit.instructure.com/ddb-sync/config"
+	"gerrit.instructure.com/ddb-sync/status"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -19,7 +20,7 @@ const preflightRetries = 7
 type Operation interface {
 	Preflights(*dynamodb.DescribeTableOutput, *dynamodb.DescribeTableOutput) error
 	Run() error
-	Status() string
+	Status(*status.Status)
 }
 
 type OperatorPhase int
@@ -151,22 +152,30 @@ func (o *Operator) Run() error {
 	return nil
 }
 
-func (o *Operator) Status() string {
+func (o *Operator) Status() *status.Status {
 	o.operationLock.Lock()
 	defer o.operationLock.Unlock()
 
+	status := status.New(o.OperationPlan)
 	switch o.operationPhase {
 	case NotStartedPhase:
-		return "Waiting…"
-	case BackfillPhase:
-		return o.backfill.Status()
-	case StreamPhase:
-		return o.stream.Status()
+		status.WaitingStatus()
+	case BackfillPhase, StreamPhase:
+		o.describe.Status(status)
+
+		if o.backfill != nil {
+			o.backfill.Status(status)
+		}
+
+		if o.stream != nil {
+			o.stream.Status(status)
+		}
 	case NoopPhase:
-		return fmt.Sprintf("Nothing to do: [%s] ⇨ [%s]:  ", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
+		status.NoopStatus()
 	default:
-		return "INTERNAL ERROR: Unknown operation status"
+		status.ErrorStatus()
 	}
+	return status
 }
 
 func (o *Operator) getTableDescription(client *dynamodb.DynamoDB, tableName string) (*dynamodb.DescribeTableOutput, error) {

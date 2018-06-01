@@ -7,6 +7,7 @@ import (
 
 	"gerrit.instructure.com/ddb-sync/config"
 	"gerrit.instructure.com/ddb-sync/log"
+	"gerrit.instructure.com/ddb-sync/status"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -57,13 +58,12 @@ func (o *DescribeOperation) Run() error {
 	return collator.Run()
 }
 
-// func (o *DescribeOperation) Status(s *status.Status) {
-func (o *DescribeOperation) Status() string {
-	if o.describing.StatusCode() > 3 {
-		return "-ERRORED-"
+func (o *DescribeOperation) Status(s *status.Status) {
+	if o.describing.Errored() {
+		s.Description = "-ERRORED-"
 	}
-	// TODO: Approximate these numbers
-	return fmt.Sprintf("%s items (~%s)", o.ApproximateItemCount(), o.ApproximateTableSize())
+	// // TODO: Approximate these numbers
+	s.Description = fmt.Sprintf("%s items (~%s)", o.ApproximateItemCount(), o.ApproximateTableSize())
 }
 
 func (o *DescribeOperation) describe() error {

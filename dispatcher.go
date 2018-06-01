@@ -7,6 +7,7 @@ import (
 
 	"gerrit.instructure.com/ddb-sync/config"
 	"gerrit.instructure.com/ddb-sync/log"
+	"gerrit.instructure.com/ddb-sync/status"
 )
 
 var (
@@ -87,12 +88,12 @@ func (d *Dispatcher) Start() {
 	}()
 }
 
-func (d *Dispatcher) Statuses() []string {
-	var statuses []string
+func (d *Dispatcher) Statuses() *status.Set {
+	var statuses []*status.Status
 	for _, operator := range d.Operators {
 		statuses = append(statuses, operator.Status())
 	}
-	return statuses
+	return status.NewSet(statuses)
 }
 
 func (d *Dispatcher) Cancel() {
