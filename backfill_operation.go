@@ -11,7 +11,6 @@ import (
 	"gerrit.instructure.com/ddb-sync/config"
 	"gerrit.instructure.com/ddb-sync/log"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
@@ -26,9 +25,8 @@ type BackfillOperation struct {
 	inputClient  *dynamodb.DynamoDB
 	outputClient *dynamodb.DynamoDB
 
-	describing Phase
-	scanning   Phase
-	writing    Phase
+	scanning Phase
+	writing  Phase
 
 	approximateItemCount      int64
 	approximateTableSizeBytes int64
@@ -74,7 +72,6 @@ func (o *BackfillOperation) Run() error {
 	collator := ErrorCollator{
 		Cancel: o.contextCancelFunc,
 	}
-	collator.Register(o.describe)
 	collator.Register(o.scan) // TODO: FANOUT?
 	collator.Register(o.batchWrite)
 
@@ -84,14 +81,11 @@ func (o *BackfillOperation) Run() error {
 
 func (o *BackfillOperation) Status() string {
 	status := "Backfilling"
-	if o.describing.StatusCode() > 3 || o.scanning.StatusCode() > 3 || o.writing.StatusCode() > 3 {
+	if o.scanning.StatusCode() > 3 || o.writing.StatusCode() > 3 {
 		status = "Backfill failed"
 	}
 
 	inputDescription := ""
-	if o.describing.StatusCode() > 0 {
-		inputDescription = fmt.Sprintf(" ~%d items (~%d bytes)", o.ApproximateItemCount(), o.ApproximateTableSizeBytes())
-	}
 	status += fmt.Sprintf("%s [%s] ⇨ [%s]:  ", inputDescription, o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
 
 	if o.scanning.StatusCode() > 0 {
@@ -109,20 +103,6 @@ func (o *BackfillOperation) Status() string {
 	}
 
 	return status
-}
-
-func (o *BackfillOperation) describe() error {
-	o.describing.Start()
-	output, err := o.inputClient.DescribeTableWithContext(o.context, &dynamodb.DescribeTableInput{TableName: aws.String(o.OperationPlan.Input.TableName)})
-	if err != nil {
-		o.describing.Error()
-		return fmt.Errorf("[%s] ⇨ [%s]: Backfill failed: (DescribeTable) %v", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, err)
-	}
-
-	atomic.StoreInt64(&o.approximateItemCount, *output.Table.ItemCount)
-	atomic.StoreInt64(&o.approximateTableSizeBytes, *output.Table.TableSizeBytes)
-	o.describing.Finish()
-	return nil
 }
 
 func (o *BackfillOperation) scan() error {

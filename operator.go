@@ -30,8 +30,10 @@ type Operator struct {
 
 	operationLock  sync.Mutex
 	operationPhase OperatorPhase
-	backfill       Operation
-	stream         Operation
+
+	describe Operation
+	backfill Operation
+	stream   Operation
 }
 
 func NewOperator(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*Operator, error) {
@@ -41,6 +43,11 @@ func NewOperator(ctx context.Context, plan config.OperationPlan, cancelFunc cont
 		OperationPlan:     plan,
 		context:           ctx,
 		contextCancelFunc: cancelFunc,
+	}
+
+	o.describe, err = NewDescribeOperation(ctx, plan, cancelFunc)
+	if err != nil {
+		return nil, err
 	}
 
 	if !o.OperationPlan.Backfill.Disabled {
@@ -61,6 +68,11 @@ func NewOperator(ctx context.Context, plan config.OperationPlan, cancelFunc cont
 }
 
 func (o *Operator) Run() error {
+	err := o.describe.Run()
+	if err != nil {
+		return err
+	}
+
 	if !o.OperationPlan.Backfill.Disabled {
 		o.operationLock.Lock()
 		o.operationPhase = BackfillPhase
