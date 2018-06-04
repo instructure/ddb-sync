@@ -147,13 +147,14 @@ func (o *StreamOperation) processShard(shard *shard_tree.Shard) error {
 		return err
 	}
 
+	done := o.context.Done()
 	for recordOutput.NextShardIterator != nil && *recordOutput.NextShardIterator != "" {
 		o.checkLatency.Update(time.Now())
 		for _, record := range recordOutput.Records {
 			atomic.AddInt64(&o.receivedCount, 1)
 			select {
 			case o.c <- *record:
-			case <-o.context.Done():
+			case <-done:
 				return o.context.Err()
 			}
 		}
