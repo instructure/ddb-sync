@@ -41,7 +41,8 @@ type Operator struct {
 	operationLock  sync.Mutex
 	operationPhase OperatorPhase
 
-	describe Operation
+	describe *DescribeOperation
+
 	backfill Operation
 	stream   Operation
 }
@@ -96,11 +97,6 @@ func (o *Operator) Preflights() error {
 		return err
 	}
 
-	err = o.describe.Preflights(inDescr, outDescr)
-	if err != nil {
-		return err
-	}
-
 	if o.backfill != nil {
 		err := o.backfill.Preflights(inDescr, outDescr)
 		if err != nil {
@@ -118,10 +114,8 @@ func (o *Operator) Preflights() error {
 }
 
 func (o *Operator) Run() error {
-	err := o.describe.Run()
-	if err != nil {
-		return err
-	}
+	go o.describe.Start()
+	defer o.describe.Stop()
 
 	if o.backfill != nil {
 		o.operationLock.Lock()
@@ -157,12 +151,12 @@ func (o *Operator) Status() *status.Status {
 	defer o.operationLock.Unlock()
 
 	status := status.New(o.OperationPlan)
+	o.describe.Status(status)
+
 	switch o.operationPhase {
 	case NotStartedPhase:
 		status.WaitingStatus()
 	case BackfillPhase, StreamPhase:
-		o.describe.Status(status)
-
 		if o.backfill != nil {
 			o.backfill.Status(status)
 		}

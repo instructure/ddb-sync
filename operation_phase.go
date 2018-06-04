@@ -5,28 +5,21 @@ import (
 	"sync"
 )
 
-type operationPhase int
+type OperationPhase int
 
 const (
-	Initialized operationPhase = iota
+	Initialized OperationPhase = iota
 	Started
 	Finished
 	Errored
 )
 
-var badTransition = fmt.Errorf("PhaseError: unavailable transition")
+var errBadTransition = fmt.Errorf("PhaseError: unavailable transition")
 
 // Phase a representation of the status of an operational phase
 type Phase struct {
-	opPhase operationPhase
+	opPhase OperationPhase
 	m       sync.RWMutex
-}
-
-func (p *Phase) update(phase operationPhase) {
-	p.m.Lock()
-	defer p.m.Unlock()
-
-	p.opPhase = phase
 }
 
 // StatusCode returns the representative integer of the status
@@ -34,7 +27,7 @@ func (p *Phase) update(phase operationPhase) {
 // 1 -> Started
 // 2 -> Finished
 // 3 -> Errored
-func (p *Phase) StatusCode() operationPhase {
+func (p *Phase) StatusCode() OperationPhase {
 	p.m.RLock()
 	defer p.m.RUnlock()
 
@@ -43,31 +36,19 @@ func (p *Phase) StatusCode() operationPhase {
 
 // Start mark the phase as started
 func (p *Phase) Start() error {
-	if p.StatusCode() != Initialized {
-		p.update(Errored)
-		return badTransition
-	}
-	p.update(Started)
+	p.transition(Started)
 	return nil
 }
 
 // Finish mark the phase as finished
 func (p *Phase) Finish() error {
-	if p.StatusCode() != Started {
-		p.update(Errored)
-		return badTransition
-	}
-	p.update(Finished)
+	p.transition(Finished)
 	return nil
 }
 
 // Error mark the phase as errored
 func (p *Phase) Error() error {
-	ogPhase := p.StatusCode()
-	p.update(Errored)
-	if ogPhase == Errored {
-		return badTransition
-	}
+	_ = p.transition(Errored)
 	return nil
 }
 
@@ -96,4 +77,29 @@ func (p *Phase) Complete() bool {
 
 func (p *Phase) Errored() bool {
 	return p.StatusCode() == Errored
+}
+
+func (p *Phase) transition(toPhase OperationPhase) error {
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	switch p.opPhase {
+	case Initialized:
+		if toPhase != Started {
+			p.opPhase = Errored
+			return errBadTransition
+		}
+	case Started:
+		if toPhase != Finished {
+			p.opPhase = Errored
+			return errBadTransition
+		}
+	case Finished:
+		return errBadTransition
+	case Errored:
+		return nil
+	}
+
+	p.opPhase = toPhase
+	return nil
 }

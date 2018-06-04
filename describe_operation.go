@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"gerrit.instructure.com/ddb-sync/config"
 	"gerrit.instructure.com/ddb-sync/log"
@@ -13,6 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/tears-of-noobs/bytefmt"
 )
+
+const tickInterval = 15 * time.Minute
 
 type DescribeOperation struct {
 	OperationPlan     config.OperationPlan
@@ -25,6 +28,8 @@ type DescribeOperation struct {
 
 	approximateItemCount      int64
 	approximateTableSizeBytes int64
+
+	ticker *time.Ticker
 }
 
 func NewDescribeOperation(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*DescribeOperation, error) {
@@ -35,49 +40,53 @@ func NewDescribeOperation(ctx context.Context, plan config.OperationPlan, cancel
 
 	inputClient := dynamodb.New(inputSession)
 
-	// Create operation w/instantiated clients
+	// Create a describe operation w/instantiated clients
 	return &DescribeOperation{
 		OperationPlan:     plan,
 		context:           ctx,
 		contextCancelFunc: cancelFunc,
 
 		inputClient: inputClient,
+
+		ticker: time.NewTicker(tickInterval),
 	}, nil
 }
 
-func (o *DescribeOperation) Preflights(_ *dynamodb.DescribeTableOutput, _ *dynamodb.DescribeTableOutput) error {
-	return nil
+func (o *DescribeOperation) Start() {
+	o.describing.Start()
+	o.describe()
+
+	for range o.ticker.C {
+		o.describe()
+	}
 }
 
-func (o *DescribeOperation) Run() error {
-	collator := ErrorCollator{
-		Cancel: o.contextCancelFunc,
-	}
-	collator.Register(o.describe)
-
-	return collator.Run()
+func (o *DescribeOperation) Stop() {
+	o.describing.Finish()
+	o.ticker.Stop()
 }
 
 func (o *DescribeOperation) Status(s *status.Status) {
 	if o.describing.Errored() {
 		s.Description = "-ERRORED-"
+		return
+	} else if o.describing.Complete() {
+		s.Description = "-COMPLETE-"
+		return
 	}
-	// // TODO: Approximate these numbers
 	s.Description = fmt.Sprintf("%s items (~%s)", o.ApproximateItemCount(), o.ApproximateTableSize())
 }
 
-func (o *DescribeOperation) describe() error {
-	o.describing.Start()
+func (o *DescribeOperation) describe() {
 	output, err := o.inputClient.DescribeTableWithContext(o.context, &dynamodb.DescribeTableInput{TableName: aws.String(o.OperationPlan.Input.TableName)})
 	if err != nil {
 		o.describing.Error()
-		return fmt.Errorf("[%s] ⇨ [%s]: Backfill failed: (DescribeTable) %v", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, err)
+		log.Println(fmt.Errorf("[%s] ⇨ [%s]: Describe failed: %v", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, err))
+		return
 	}
 
 	atomic.StoreInt64(&o.approximateItemCount, *output.Table.ItemCount)
 	atomic.StoreInt64(&o.approximateTableSizeBytes, *output.Table.TableSizeBytes)
-	o.describing.Finish()
-	return nil
 }
 
 func (o *DescribeOperation) ApproximateItemCount() string {
