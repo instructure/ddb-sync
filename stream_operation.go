@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"gerrit.instructure.com/ddb-sync/config"
-	"gerrit.instructure.com/ddb-sync/dispatcher"
 	"gerrit.instructure.com/ddb-sync/log"
 	"gerrit.instructure.com/ddb-sync/shard_tree"
+	"gerrit.instructure.com/ddb-sync/shard_watcher"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -37,7 +37,7 @@ type StreamOperation struct {
 	streamRead Phase
 	writing    Phase
 
-	dispatcher *dispatcher.Dispatcher
+	watcher *shard_watcher.Watcher
 }
 
 func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*StreamOperation, error) {
@@ -89,7 +89,7 @@ func (o *StreamOperation) Run() error {
 }
 
 func (o *StreamOperation) Status() string {
-	status := o.dispatcher.Status()
+	status := o.watcher.Status()
 	if o.streamRead.StatusCode() > 3 || o.writing.StatusCode() > 3 {
 		status = "Stream failed"
 	}
@@ -126,7 +126,7 @@ func (o *StreamOperation) readStream() error {
 		return err
 	}
 
-	dispatcherInput := &dispatcher.DispatchInput{
+	watcherInput := &shard_watcher.RunInput{
 		Context:           o.context,
 		ContextCancelFunc: o.contextCancelFunc,
 
@@ -137,9 +137,9 @@ func (o *StreamOperation) readStream() error {
 		ShardProcessor: o.processShard,
 	}
 
-	o.dispatcher = dispatcher.New(dispatcherInput)
+	o.watcher = shard_watcher.New(watcherInput)
 
-	err = o.dispatcher.RunWorkers()
+	err = o.watcher.RunWorkers()
 	if err == nil {
 		log.Printf("[%s] ⇨ [%s]: Stream closed…", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
 		o.streamRead.Finish()
