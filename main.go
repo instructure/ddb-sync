@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"time"
@@ -18,7 +19,7 @@ var StopSignals = []os.Signal{
 func main() {
 	plan, err := ParseArgs(os.Args[1:])
 	if err != nil {
-		log.Printf("[ERROR] %v\n", err)
+		fmt.Printf("[ERROR] %v\n", err)
 		os.Exit(1)
 	}
 

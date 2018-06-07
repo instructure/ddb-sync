@@ -9,7 +9,7 @@ import (
 )
 
 func ParseArgs(args []string) ([]config.OperationPlan, error) {
-	flagSet := flagSet()
+	flagSet := newFlagSet()
 
 	if len(args) == 0 {
 		fmt.Println("ddb-sync:")
@@ -19,6 +19,8 @@ func ParseArgs(args []string) ([]config.OperationPlan, error) {
 
 	err := flagSet.Parse(args)
 	if err != nil {
+		fmt.Println("ddb-sync:")
+		fmt.Println(flagSet.FlagUsages())
 		return nil, err
 	}
 
@@ -72,7 +74,7 @@ func ParseArgs(args []string) ([]config.OperationPlan, error) {
 	return plan, err
 }
 
-func flagSet() *flag.FlagSet {
+func newFlagSet() *flag.FlagSet {
 	flag := flag.NewFlagSet("ddb-sync", flag.ContinueOnError)
 
 	flag.String("config-file", "", "Filename for configuration yaml")
