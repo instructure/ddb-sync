@@ -73,3 +73,15 @@ plan:
     backfill:
       disabled: false
 ```
+
+
+## Development and Testing tools
+You can use the golang script in `contrib/dynamo_writer.go` to help configure some faked items.  You'll need a table that conforms to table partition key schema.
+
+
+For instance, in inseng, you can test with the source table of `ddb-sync-source`.
+
+You can run the item writer to write items:
+```console
+vgo run contrib/dynamo_writer.go <table_name>
+```

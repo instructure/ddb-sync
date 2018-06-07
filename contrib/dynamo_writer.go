@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"sync/atomic"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -10,24 +11,45 @@ import (
 	"github.com/segmentio/ksuid"
 )
 
-const SrcTableName = "ddb-sync-source"
-const batchMax = 500
-
 var recordCount int64
 
+const (
+	defaultTableName = "ddb-sync-source"
+	batchMax         = 500
+)
+
 func main() {
+
+	destTableName, err := parseArgs()
+	if err != nil {
+		fmt.Printf("[ERROR] %v\n", err)
+		os.Exit(3)
+	}
+
 	svc := dynamodb.New(session.New())
 	for i := 0; i < batchMax; i++ {
-		err := sendBatch(svc)
+		err := sendBatch(svc, destTableName)
 		if err != nil {
 			fmt.Println("Err: ", err)
 		}
 	}
 }
 
-func sendBatch(svc *dynamodb.DynamoDB) error {
+func parseArgs() (string, error) {
+	if len(os.Args) > 2 {
+		return "", fmt.Errorf("Wrong number of arguments")
+	}
+
+	if len(os.Args) > 1 {
+		return os.Args[1], nil
+	}
+
+	return defaultTableName, nil
+}
+
+func sendBatch(svc *dynamodb.DynamoDB, destTableName string) error {
 	input := &dynamodb.BatchWriteItemInput{
-		RequestItems: buildRequestItems(),
+		RequestItems: buildRequestItems(destTableName),
 	}
 
 	atomic.AddInt64(&recordCount, 25)
@@ -39,9 +61,9 @@ func sendBatch(svc *dynamodb.DynamoDB) error {
 	return nil
 }
 
-func buildRequestItems() map[string][]*dynamodb.WriteRequest {
+func buildRequestItems(destTableName string) map[string][]*dynamodb.WriteRequest {
 	return map[string][]*dynamodb.WriteRequest{
-		SrcTableName: getRequests(25),
+		destTableName: getRequests(25),
 	}
 }
 
