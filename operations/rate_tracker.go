@@ -16,7 +16,9 @@ type RateTracker struct {
 	rateType string
 
 	rateTicker *time.Ticker
-	rateTime   time.Time
+
+	rateTime  time.Time
+	startTime time.Time
 
 	countAtLastReset int64
 	counter          int64
@@ -29,7 +31,9 @@ func NewRateTracker(rateType string, tickFreq time.Duration) *RateTracker {
 		rateType: rateType,
 
 		rateTicker: time.NewTicker(tickFreq),
-		rateTime:   time.Now(),
+
+		rateTime:  time.Now(),
+		startTime: time.Now(),
 	}
 }
 
@@ -78,4 +82,9 @@ func (t *RateTracker) RatePerSecond() string {
 	t.m.RLock()
 	defer t.m.RUnlock()
 	return fmt.Sprintf("%.f %s/s", t.lastRate, t.rateType)
+}
+
+// Duration the duration since we started
+func (t *RateTracker) Duration() time.Duration {
+	return time.Since(t.startTime).Round(time.Second)
 }

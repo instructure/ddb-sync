@@ -117,6 +117,21 @@ func (o *BackfillOperation) Rate() string {
 	return ""
 }
 
+// Checkpoint prints a logging statement summarizing the current state.  Meant for periodic update requests.
+func (o *BackfillOperation) Checkpoint() string {
+	if o.writing.Running() {
+		return fmt.Sprintf("%s Backfill in progress: %d items written over %s", o.OperationPlan.Description(), o.writeRateTracker.Count(), o.writeRateTracker.Duration().String())
+	}
+	if o.writing.Complete() {
+		return o.checkpointComplete()
+	}
+	return ""
+}
+
+func (o *BackfillOperation) checkpointComplete() string {
+	return fmt.Sprintf("%s Backfill complete: %d items written over %s", o.OperationPlan.Description(), o.writeRateTracker.Count(), o.writeRateTracker.Duration().String())
+}
+
 func (o *BackfillOperation) scan() error {
 	defer close(o.c)
 	o.scanning.Start()
@@ -144,7 +159,7 @@ func (o *BackfillOperation) scan() error {
 	err := o.inputClient.ScanPagesWithContext(o.context, input, scanHandler)
 	if err != nil {
 		o.scanning.Error()
-		return fmt.Errorf("[%s] ⇨ [%s]: Backfill failed: (Scan) %v", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, err)
+		return fmt.Errorf("%s Backfill failed: (Scan) %v", o.OperationPlan.Description(), err)
 	}
 
 	// check if the context has been canceled
@@ -153,6 +168,7 @@ func (o *BackfillOperation) scan() error {
 		return o.context.Err()
 
 	default:
+		log.Printf("[%s] Scan complete.", o.OperationPlan.Input.TableName)
 		o.scanning.Finish()
 		return nil
 	}
@@ -170,7 +186,7 @@ func (o *BackfillOperation) batchWrite() error {
 
 	err := collator.Run()
 	if err == nil {
-		log.Printf("[%s] ⇨ [%s]: Backfill complete!", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
+		log.Println(o.checkpointComplete())
 
 		o.writing.Finish()
 		return nil

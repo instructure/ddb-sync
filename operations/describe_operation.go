@@ -73,12 +73,8 @@ func (o *DescribeOperation) Status() string {
 }
 
 func (o *DescribeOperation) describe() {
-	output, err := o.inputClient.DescribeTableWithContext(o.context, &dynamodb.DescribeTableInput{TableName: aws.String(o.OperationPlan.Input.TableName)})
-	if err != nil {
-		o.describing.Error()
-		log.Println(fmt.Errorf("[%s] ⇨ [%s]: Describe failed: %v", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, err))
-		return
-	}
+	log.Printf("%s Describing…\n", o.OperationPlan.Description())
+	output, _ := o.inputClient.DescribeTableWithContext(o.context, &dynamodb.DescribeTableInput{TableName: aws.String(o.OperationPlan.Input.TableName)})
 
 	atomic.StoreInt64(&o.approximateItemCount, *output.Table.ItemCount)
 	atomic.StoreInt64(&o.approximateTableSizeBytes, *output.Table.TableSizeBytes)

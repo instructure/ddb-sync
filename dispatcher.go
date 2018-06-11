@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"gerrit.instructure.com/ddb-sync/config"
@@ -82,6 +83,17 @@ func (d *Dispatcher) Start() {
 
 		d.err = collator.Run()
 	}()
+}
+
+func (d *Dispatcher) Checkpoint() {
+	checkpoints := []string{"Checkpoint ↓↓↓↓↓↓↓↓↓"}
+	for _, operator := range d.Operators {
+		adtl := operator.Checkpoint()
+		if len(adtl) > 0 {
+			checkpoints = append(checkpoints, operator.Checkpoint())
+		}
+	}
+	log.Printf(strings.Join(checkpoints, "\n"))
 }
 
 func (d *Dispatcher) Statuses() *status.Set {

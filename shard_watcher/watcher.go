@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"gerrit.instructure.com/ddb-sync/log"
 	"gerrit.instructure.com/ddb-sync/shard_tree"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -20,7 +21,9 @@ type RunInput struct {
 	Context           context.Context
 	ContextCancelFunc context.CancelFunc
 
-	InputTableName string
+	InputTableName  string
+	OutputTableName string
+
 	StreamARN      string
 	Client         *dynamodbstreams.DynamoDBStreams
 	ShardProcessor func(*shard_tree.Shard) error
@@ -64,6 +67,10 @@ func (w *Watcher) dispatchWork() error {
 	return nil
 }
 
+func (w *Watcher) logShardCompletion() {
+	log.Printf("[%s] ⇨ [%s] Shard complete. %d completed.\n", w.InputTableName, w.OutputTableName, w.DispatchedCount())
+}
+
 func (w *Watcher) RunWorkers() error {
 	var finalErr error
 	err := w.dispatchWork()
@@ -80,6 +87,7 @@ loop:
 				w.ContextCancelFunc()
 			}
 			w.tree.ShardComplete(result.shard)
+			w.logShardCompletion()
 			err = w.dispatchWork()
 			if err != nil {
 				finalErr = err

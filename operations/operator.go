@@ -21,9 +21,10 @@ const preflightRetries = 7
 var ErrOperationFailed = errors.New("Operation failed")
 
 type Operation interface {
+	Checkpoint() string
 	Preflights(*dynamodb.DescribeTableOutput, *dynamodb.DescribeTableOutput) error
-	Run() error
 	Rate() string
+	Run() error
 	Status() string
 }
 
@@ -144,11 +145,26 @@ func (o *Operator) Run() error {
 		}
 	}
 
+	o.operationPhase = CompletedPhase
+
 	if o.OperationPlan.Backfill.Disabled && o.OperationPlan.Stream.Disabled {
 		o.operationPhase = NoopPhase
 	}
-
 	return nil
+}
+
+func (o *Operator) Checkpoint() string {
+	switch o.operationPhase {
+	case NotStartedPhase:
+		return fmt.Sprintf("%s Waiting", o.OperationPlan.Description())
+	case BackfillPhase:
+		return o.backfill.Checkpoint()
+	case StreamPhase:
+		return o.stream.Checkpoint()
+	case CompletedPhase:
+		return fmt.Sprintf("%s Completed", o.OperationPlan.Description())
+	}
+	return ""
 }
 
 func (o *Operator) Status() *status.Status {

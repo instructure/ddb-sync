@@ -118,6 +118,17 @@ func (o *StreamOperation) Status() string {
 	return ""
 }
 
+// Checkpoint is a periodic status output meant for historical tracking.  This will be called when an update is desired.
+func (o *StreamOperation) Checkpoint() string {
+	if o.writing.Running() {
+		return fmt.Sprintf("%s Streaming: %d items written over %s", o.OperationPlan.Description(), o.writeRateTracker.Count(), o.writeRateTracker.Duration().String())
+	}
+	if o.writing.Complete() {
+		return o.checkpointComplete()
+	}
+	return ""
+}
+
 func (o *StreamOperation) Rate() string {
 	if o.writing.Running() {
 		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
@@ -126,9 +137,13 @@ func (o *StreamOperation) Rate() string {
 	return ""
 }
 
+func (o *StreamOperation) checkpointComplete() string {
+	return fmt.Sprintf("%s Stream closed: %d items written over %s", o.OperationPlan.Description(), o.writeRateTracker.Count(), o.writeRateTracker.Duration().String())
+}
+
 func (o *StreamOperation) readStream() error {
 	defer close(o.c)
-	log.Printf("[%s] ⇨ [%s]: Streaming started…", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
+	log.Printf("%s Streaming started…", o.OperationPlan.Description())
 	o.streamRead.Start()
 
 	err := o.lookupLatestStreamARN(o.OperationPlan.Input.TableName)
@@ -140,9 +155,10 @@ func (o *StreamOperation) readStream() error {
 		Context:           o.context,
 		ContextCancelFunc: o.contextCancelFunc,
 
-		InputTableName: o.OperationPlan.Input.TableName,
-		StreamARN:      o.streamARN,
-		Client:         o.inputClient,
+		InputTableName:  o.OperationPlan.Input.TableName,
+		OutputTableName: o.OperationPlan.Output.TableName,
+		StreamARN:       o.streamARN,
+		Client:          o.inputClient,
 
 		ShardProcessor: o.processShard,
 	}
@@ -151,7 +167,7 @@ func (o *StreamOperation) readStream() error {
 
 	err = o.watcher.RunWorkers()
 	if err == nil {
-		log.Printf("[%s] ⇨ [%s]: Stream closed…", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName)
+		o.checkpointComplete()
 		o.streamRead.Finish()
 	} else {
 		o.streamRead.Error()

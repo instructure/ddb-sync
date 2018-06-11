@@ -75,6 +75,12 @@ func (p OperationPlan) WithDefaults() OperationPlan {
 	return newPlan
 }
 
+// Description returns a description of the operation input/output
+// "InputTableName => OutputTableName:"
+func (p OperationPlan) Description() string {
+	return fmt.Sprintf("[%s] ⇨ [%s]:", p.Input.TableName, p.Output.TableName)
+}
+
 func (p OperationPlan) Validate() error {
 	defaultRegion := ""
 	defaultConfig := defaults.Get().Config
