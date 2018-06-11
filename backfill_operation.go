@@ -12,6 +12,7 @@ import (
 	"gerrit.instructure.com/ddb-sync/log"
 	"gerrit.instructure.com/ddb-sync/status"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
@@ -33,6 +34,7 @@ type BackfillOperation struct {
 	approximateTableSizeBytes int64
 	scanCount                 int64
 
+	wcuRateTracker   *RateTracker
 	writeRateTracker *RateTracker
 }
 
@@ -56,6 +58,7 @@ func NewBackfillOperation(ctx context.Context, plan config.OperationPlan, cancel
 		inputClient:  inputClient,
 		outputClient: outputClient,
 
+		wcuRateTracker:   NewRateTracker(3 * time.Second),
 		writeRateTracker: NewRateTracker(3 * time.Second),
 	}, nil
 }
@@ -77,7 +80,9 @@ func (o *BackfillOperation) Preflights(_ *dynamodb.DescribeTableOutput, _ *dynam
 }
 
 func (o *BackfillOperation) Run() error {
+	o.wcuRateTracker.Start()
 	o.writeRateTracker.Start()
+	defer o.wcuRateTracker.Stop()
 	defer o.writeRateTracker.Stop()
 
 	collator := ErrorCollator{
@@ -97,7 +102,7 @@ func (o *BackfillOperation) Status(s *status.Status) {
 	} else if o.errored() {
 		s.Backfill = "-ERRORED-"
 	} else {
-		s.Rate = o.writeRateTracker.RecordsPerSecond()
+		s.Rate = o.wcuRateTracker.RecordsPerSecond()
 
 		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
 		writeCount := fmt.Sprintf("%d written", o.writeRateTracker.Count())
@@ -231,7 +236,8 @@ channel:
 
 func (o *BackfillOperation) sendBatch(batch map[string][]*dynamodb.WriteRequest) error {
 	input := &dynamodb.BatchWriteItemInput{
-		RequestItems: batch,
+		RequestItems:           batch,
+		ReturnConsumedCapacity: aws.String("TOTAL"),
 	}
 	batchLength := len(batch[o.OperationPlan.Output.TableName])
 
@@ -247,11 +253,23 @@ func (o *BackfillOperation) sendBatch(batch map[string][]*dynamodb.WriteRequest)
 	if len(result.UnprocessedItems) > 0 && len(result.UnprocessedItems[o.OperationPlan.Output.TableName]) > 0 {
 		writeCount := batchLength - len(result.UnprocessedItems[o.OperationPlan.Output.TableName])
 		o.writeRateTracker.Increment(int64(writeCount))
+		o.UpdateConsumedCapacity(result.ConsumedCapacity)
 		return o.sendBatch(result.UnprocessedItems)
 	}
+
+	o.UpdateConsumedCapacity(result.ConsumedCapacity)
 	o.writeRateTracker.Increment(int64(batchLength))
 
 	return nil
+}
+
+func (o *BackfillOperation) UpdateConsumedCapacity(capacities []*dynamodb.ConsumedCapacity) {
+	var agg float64
+	for _, cap := range capacities {
+		agg = agg + *cap.CapacityUnits
+	}
+
+	o.wcuRateTracker.Increment(int64(agg))
 }
 
 func (o *BackfillOperation) ApproximateItemCount() int64 {

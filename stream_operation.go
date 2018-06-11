@@ -38,6 +38,7 @@ type StreamOperation struct {
 
 	watcher *shard_watcher.Watcher
 
+	wcuRateTracker   *RateTracker
 	writeRateTracker *RateTracker
 }
 
@@ -62,6 +63,7 @@ func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFu
 		inputDescribeTableClient: inputDescribeTableClient,
 		outputClient:             outputClient,
 
+		wcuRateTracker:   NewRateTracker(3 * time.Second),
 		writeRateTracker: NewRateTracker(3 * time.Second),
 	}, nil
 }
@@ -82,7 +84,9 @@ func (o *StreamOperation) Preflights(in *dynamodb.DescribeTableOutput, _ *dynamo
 }
 
 func (o *StreamOperation) Run() error {
+	o.wcuRateTracker.Start()
 	o.writeRateTracker.Start()
+	defer o.wcuRateTracker.Stop()
 	defer o.writeRateTracker.Stop()
 
 	collator := ErrorCollator{
@@ -215,22 +219,25 @@ func (o *StreamOperation) writeRecords() error {
 				Key:       record.Dynamodb.Keys,
 				TableName: aws.String(o.OperationPlan.Output.TableName),
 			}
-			_, err := o.outputClient.DeleteItemWithContext(o.context, input)
+			resp, err := o.outputClient.DeleteItemWithContext(o.context, input)
 			if err != nil {
 				return err
 			}
+
+			o.markItemWritten(resp.ConsumedCapacity)
 		} else {
 			input := &dynamodb.PutItemInput{
-				Item:      record.Dynamodb.NewImage,
-				TableName: aws.String(o.OperationPlan.Output.TableName),
+				Item: record.Dynamodb.NewImage,
+				ReturnConsumedCapacity: aws.String("TOTAL"),
+				TableName:              aws.String(o.OperationPlan.Output.TableName),
 			}
-			_, err := o.outputClient.PutItemWithContext(o.context, input)
+			resp, err := o.outputClient.PutItemWithContext(o.context, input)
 			if err != nil {
 				return err
 			}
-		}
 
-		o.markItemReceived(record)
+			o.markItemWritten(resp.ConsumedCapacity)
+		}
 	}
 
 	o.writing.Finish()
@@ -250,6 +257,7 @@ func (o *StreamOperation) ReceivedCount() int64 {
 	return atomic.LoadInt64(&o.receivedCount)
 }
 
-func (o *StreamOperation) markItemReceived(record dynamodbstreams.Record) {
+func (o *StreamOperation) markItemWritten(cap *dynamodb.ConsumedCapacity) {
 	o.writeRateTracker.Increment(1)
+	o.wcuRateTracker.Increment(int64(*cap.CapacityUnits))
 }

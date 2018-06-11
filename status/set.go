@@ -44,7 +44,7 @@ func (s *Set) Delimiter() string {
 }
 
 func (s *Set) Header() string {
-	return Tabify([]string{"Table", "Describe", "Backfill", "Stream", "Rate"})
+	return Tabify([]string{"Table", "Describe", "Backfill", "Stream", "WCU Rate"})
 }
 
 func (s *Set) Display() []string {
