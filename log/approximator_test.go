@@ -24,4 +24,6 @@ func TestApproximate(t *testing.T) {
 	testCase(6700, "~7k", t)
 	testCase(10000, "~10k", t)
 	testCase(100000, "~100k", t)
+	testCase(12, "12", t)
+	testCase(0, "0", t)
 }

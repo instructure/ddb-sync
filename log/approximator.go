@@ -17,6 +17,7 @@ func Approximate(num int) string {
 	var suffix string
 	var value float64
 	var realNum = float64(num)
+	prefix := "~"
 	switch {
 	case realNum >= t:
 		suffix = "t"
@@ -31,10 +32,14 @@ func Approximate(num int) string {
 		suffix = "k"
 		value = math.Round(realNum / k)
 	case realNum >= u:
-		suffix = "u"
+		prefix = ""
+		suffix = ""
 		value = math.Round(realNum / u)
-
+	default:
+		prefix = ""
+		suffix = ""
+		value = float64(num)
 	}
 
-	return fmt.Sprintf("~%.f%s", value, suffix)
+	return fmt.Sprintf("%s%.f%s", prefix, value, suffix)
 }

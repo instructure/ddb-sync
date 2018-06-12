@@ -113,7 +113,6 @@ func (o *StreamOperation) Status(s *status.Status) {
 	} else if o.writing.Errored() || o.streamRead.Errored() {
 		s.Stream = "-ERRORED-"
 	}
-
 }
 
 func (o *StreamOperation) readStream() error {

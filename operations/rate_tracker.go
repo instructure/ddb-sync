@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"gerrit.instructure.com/ddb-sync/log"
 )
 
 // RateTracker is a structure to hold and manage a rate tracking loop, counters and timers
@@ -32,7 +34,7 @@ func (t *RateTracker) Increment(by int64) {
 	atomic.AddInt64(&t.counter, by)
 }
 
-// Count returns the current count
+// Count the absolute count of records we've written during the lifetime of the struct
 func (t *RateTracker) Count() int64 {
 	return atomic.LoadInt64(&t.counter)
 }
@@ -42,14 +44,15 @@ func (t *RateTracker) Start() {
 	go func() {
 		for range t.rateTicker.C {
 			t.m.Lock()
+			currentCount := t.Count()
 
-			recordCount := t.Count() - atomic.LoadInt64(&t.countAtLastReset)
+			recordCount := currentCount - atomic.LoadInt64(&t.countAtLastReset)
 			// Set the rate from the concluding window
 			t.lastRate = float64(recordCount) / time.Since(t.rateTime).Seconds()
 
 			// Reset the window
 			t.rateTime = time.Now()
-			atomic.StoreInt64(&t.countAtLastReset, t.Count())
+			atomic.StoreInt64(&t.countAtLastReset, currentCount)
 
 			t.m.Unlock()
 		}
@@ -59,6 +62,11 @@ func (t *RateTracker) Start() {
 // Stop stop the rate tracker
 func (t *RateTracker) Stop() {
 	t.rateTicker.Stop()
+}
+
+// ApproximateCount the approximate count of records we've written during the lifetime of the struct
+func (t *RateTracker) ApproximateCount() string {
+	return log.Approximate(int(t.Count()))
 }
 
 // RecordsPerSecond returns a pretty formatted description of the rate from the last completed window
