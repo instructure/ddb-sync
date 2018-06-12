@@ -1,7 +1,8 @@
-package main
+package operations
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -16,6 +17,8 @@ import (
 // preflightRetries is set to less than defaults because it causes preflights when
 // unauthenticated to take a very long time to fail
 const preflightRetries = 7
+
+var ErrOperationFailed = errors.New("Operation failed")
 
 type Operation interface {
 	Preflights(*dynamodb.DescribeTableOutput, *dynamodb.DescribeTableOutput) error

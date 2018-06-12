@@ -2,20 +2,16 @@ package main
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"gerrit.instructure.com/ddb-sync/config"
 	"gerrit.instructure.com/ddb-sync/log"
+	"gerrit.instructure.com/ddb-sync/operations"
 	"gerrit.instructure.com/ddb-sync/status"
 )
 
-var (
-	ErrOperationFailed = errors.New("Operation failed")
-)
-
 type Dispatcher struct {
-	Operators   []*Operator
+	Operators   []*operations.Operator
 	operatorsWG sync.WaitGroup
 
 	ctx    context.Context
@@ -26,7 +22,7 @@ type Dispatcher struct {
 }
 
 func NewDispatcher(plans []config.OperationPlan) (*Dispatcher, error) {
-	var operators []*Operator
+	var operators []*operations.Operator
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var finalErr error
@@ -38,7 +34,7 @@ func NewDispatcher(plans []config.OperationPlan) (*Dispatcher, error) {
 			finalErr = err
 		}
 
-		operator, err := NewOperator(ctx, plan, cancel)
+		operator, err := operations.NewOperator(ctx, plan, cancel)
 		if err != nil {
 			log.Printf("[ERROR] %v\n", err)
 			finalErr = err
@@ -67,7 +63,7 @@ func (d *Dispatcher) Preflights() error {
 }
 
 func (d *Dispatcher) Start() {
-	collator := ErrorCollator{
+	collator := operations.ErrorCollator{
 		Cancel: d.cancel,
 	}
 

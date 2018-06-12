@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gerrit.instructure.com/ddb-sync/log"
+	"gerrit.instructure.com/ddb-sync/operations"
 )
 
 const displayTickerTime = 500 * time.Millisecond
@@ -54,7 +55,7 @@ func main() {
 	case context.Canceled:
 		log.Print("[USER CANCELED]\n")
 		os.Exit(130)
-	case ErrOperationFailed:
+	case operations.ErrOperationFailed:
 		log.Print("[OPERATION FAILED]\n")
 		os.Exit(79)
 	default:
