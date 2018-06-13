@@ -1,22 +1,20 @@
 package log
 
 import (
-	"bufio"
 	"fmt"
 	"log"
 	"os"
 	"sync"
-	"text/tabwriter"
-	"unicode/utf8"
 
 	"gerrit.instructure.com/ddb-sync/status"
 )
 
 var (
 	logger          = log.New(os.Stdout, "", log.LstdFlags)
-	statusLock      sync.Mutex
-	statusSet       *status.Set
 	statusLineCount = 0
+	statusSet       = status.NewBlankSet()
+
+	statusLock sync.Mutex
 )
 
 const (
@@ -53,7 +51,7 @@ func ClearStatus() {
 func hideStatus() {
 	MoveToColumn(1)
 	EraseLineAfterCursor()
-	for i := 0; i < statusLineCount-1; i++ {
+	for i := 0; i < statusLineCount; i++ {
 		MoveCursorUp(1)
 		MoveToColumn(1)
 		EraseLineAfterCursor()
@@ -61,41 +59,11 @@ func hideStatus() {
 }
 
 func showStatus() {
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	bufW := bufio.NewWriter(w) // buffered to 4096
-
-	statusSet.UpdateViewport()
-	statusLines := statusSet.Display()
-
-	fmt.Fprintln(bufW, statusSet.Delimiter())
-	fmt.Fprintln(bufW, statusSet.Header())
-	seen := bufW.Buffered()
-	statusLineCount = 2
-
-	var calculatedLineLength int
-	for i, line := range statusLines {
-		statusLineCount++
-		if i < len(statusLines)-1 {
-			fmt.Fprintln(bufW, line)
-		} else {
-			fmt.Fprint(bufW, line)
-		}
-
-		runeCompensation := len(line) - utf8.RuneCountInString(line)
-		numBytes := bufW.Buffered() - seen
-		calculatedLineLength = numBytes - runeCompensation + statusSquelchLenBuffer
-		if calculatedLineLength > statusSet.ViewportWidth || statusSet.ViewportWidth < minimumViewportWidth {
-			bufW.Reset(w)
-			fmt.Fprintln(bufW, statusSet.Delimiter())
-			fmt.Fprintln(bufW, "Your terminal is too small for the status output.")
-			fmt.Fprintf(bufW, "Status output disabled while terminal is too narrow.")
-			statusLineCount = errorStatusLineCount
-			break
-		}
-		seen = bufW.Buffered()
+	lines := statusSet.Display()
+	statusLineCount = len(lines)
+	for _, line := range statusSet.Display() {
+		fmt.Fprintln(os.Stderr, line)
 	}
-	bufW.Flush()
-	w.Flush()
 }
 
 func StatusPrint(set *status.Set) {

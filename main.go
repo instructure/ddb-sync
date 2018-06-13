@@ -38,6 +38,8 @@ func main() {
 
 	dispatcher.Start()
 
+	displayStatus(dispatcher)
+
 	// Start the signal handler
 	StartSignalHandler(dispatcher)
 

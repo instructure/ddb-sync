@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 
+	"gerrit.instructure.com/ddb-sync/tty_table"
+
 	"golang.org/x/crypto/ssh/terminal"
 )
 
@@ -12,9 +14,18 @@ const (
 	halfMaxDelimiterWidth = 60
 )
 
+var renderer = tty_table.Renderer{
+	ColumnSeparator: "  ",
+	MaxWidth:        halfMaxDelimiterWidth * 2,
+}
+
 type Set struct {
 	Statuses      []*Status
 	ViewportWidth int
+}
+
+func NewBlankSet() *Set {
+	return &Set{}
 }
 
 func NewSet(statuses []*Status) *Set {
@@ -43,12 +54,24 @@ func (s *Set) Delimiter() string {
 	return strings.Repeat("-", div) + statusDelimiter + strings.Repeat("-", div)
 }
 
-func (s *Set) Header() string {
-	return Tabify([]string{"Table", "Describe", "Backfill", "Stream", "WCU Rate"})
+func (s *Set) Header() []string {
+	return []string{"Table", "Describe", "Backfill", "Stream", "WCU Rate"}
 }
 
 func (s *Set) Display() []string {
-	output := []string{}
+	s.UpdateViewport()
+	renderer.MaxWidth = s.ViewportWidth
+
+	table := tty_table.Table{
+		Headers: s.Header(),
+		Cells:   s.statusRows(),
+	}
+
+	return append([]string{s.Delimiter()}, renderer.Render(&table)...)
+}
+
+func (s *Set) statusRows() [][]string {
+	output := [][]string{}
 	if s == nil {
 		return output
 	}
@@ -56,6 +79,5 @@ func (s *Set) Display() []string {
 	for _, status := range s.Statuses {
 		output = append(output, status.Display())
 	}
-
 	return output
 }

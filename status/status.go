@@ -3,7 +3,6 @@ package status
 import (
 	"fmt"
 	"math"
-	"strings"
 
 	"gerrit.instructure.com/ddb-sync/config"
 )
@@ -28,10 +27,6 @@ type Status struct {
 	output []string
 }
 
-func Tabify(strs []string) string {
-	return strings.Join(strs, "\t") + "\t"
-}
-
 func New(plan config.OperationPlan) *Status {
 	return &Status{
 		Plan:        plan,
@@ -52,7 +47,7 @@ func (s *Status) BufferStatus(percentage float64) string {
 	return fmt.Sprintf("⇨ %s ⇨", BufferStates[selection])
 }
 
-func (s *Status) Display() string {
+func (s *Status) Display() []string {
 	// Clear the last output set
 	s.output = []string{}
 
@@ -61,7 +56,7 @@ func (s *Status) Display() string {
 	s.addContent(s.Backfill)
 	s.addContent(s.Stream)
 	s.addContent(s.Rate)
-	return Tabify(s.output)
+	return s.output
 }
 
 func (s *Status) formatTableDescription() string {
