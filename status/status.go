@@ -8,36 +8,13 @@ import (
 	"gerrit.instructure.com/ddb-sync/config"
 )
 
-// Alternative could be ○◔◐◕⬤
-// BufferStates are sets of 3 character long progress buffer fullness measures
+// BufferStates are single character "fullness" indicators of the buffer
 var BufferStates = []string{
-	"   ",
-	"▁  ",
-	"▂  ",
-	"▃  ",
-	"▄  ",
-	"▅  ",
-	"▆  ",
-	"▇  ",
-	"█  ",
-
-	"█▁ ",
-	"█▂ ",
-	"█▃ ",
-	"█▄ ",
-	"█▅ ",
-	"█▆ ",
-	"█▇ ",
-	"██ ",
-
-	"██▁",
-	"██▂",
-	"██▃",
-	"██▄",
-	"██▅",
-	"██▆",
-	"██▇",
-	"███",
+	"○",
+	"◔",
+	"◑",
+	"◕",
+	"●",
 }
 
 type Status struct {
@@ -71,8 +48,8 @@ func (s *Status) BufferStatus(percentage float64) string {
 	} else if percentage < 0.0 {
 		percentage = 0.0
 	}
-	selection := int(math.Floor(float64(len(BufferStates)-1) * percentage))
-	return BufferStates[selection]
+	selection := int(math.Ceil(float64(len(BufferStates)-1) * percentage))
+	return fmt.Sprintf("⇨ %s ⇨", BufferStates[selection])
 }
 
 func (s *Status) Display() string {
