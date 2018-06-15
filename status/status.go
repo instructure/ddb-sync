@@ -36,7 +36,7 @@ func New(plan config.OperationPlan) *Status {
 	}
 }
 
-func (s *Status) BufferStatus(percentage float64) string {
+func BufferStatus(percentage float64) string {
 	// We need to grab the closest bar char
 	if percentage > 1.0 {
 		percentage = 1.0

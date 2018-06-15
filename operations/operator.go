@@ -23,7 +23,8 @@ var ErrOperationFailed = errors.New("Operation failed")
 type Operation interface {
 	Preflights(*dynamodb.DescribeTableOutput, *dynamodb.DescribeTableOutput) error
 	Run() error
-	Status(*status.Status)
+	Rate() string
+	Status() string
 }
 
 type OperatorPhase int
@@ -33,6 +34,7 @@ const (
 	BackfillPhase
 	StreamPhase
 	NoopPhase
+	CompletedPhase
 )
 
 type Operator struct {
@@ -152,23 +154,28 @@ func (o *Operator) Run() error {
 func (o *Operator) Status() *status.Status {
 	o.operationLock.Lock()
 	defer o.operationLock.Unlock()
-
 	status := status.New(o.OperationPlan)
-	o.describe.Status(status)
+
+	status.Description = o.describe.Status()
+
+	if o.backfill != nil {
+		status.Backfill = o.backfill.Status()
+	}
+
+	if o.stream != nil {
+		status.Stream = o.stream.Status()
+	}
 
 	switch o.operationPhase {
 	case NotStartedPhase:
 		status.WaitingStatus()
-	case BackfillPhase, StreamPhase:
-		if o.backfill != nil {
-			o.backfill.Status(status)
-		}
-
-		if o.stream != nil {
-			o.stream.Status(status)
-		}
+	case BackfillPhase:
+		status.Rate = o.backfill.Rate()
+	case StreamPhase:
+		status.Rate = o.stream.Rate()
 	case NoopPhase:
 		status.NoopStatus()
+	case CompletedPhase:
 	default:
 		status.ErrorStatus()
 	}

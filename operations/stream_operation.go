@@ -98,21 +98,29 @@ func (o *StreamOperation) Run() error {
 	return collator.Run()
 }
 
-func (o *StreamOperation) Status(s *status.Status) {
-	if !o.watcher.Running() {
-		s.Stream = "-PENDING-"
-	} else if o.writing.Running() {
-		s.Rate = fmt.Sprintf("%s (%s latent)", o.writeRateTracker.RecordsPerSecond(), o.writeLatency.Status())
+func (o *StreamOperation) Status() string {
+	if o.writing.Errored() || o.streamRead.Errored() {
+		return erroredMsg
+	}
 
+	if !o.watcher.Running() {
+		return pendingMsg
+	} else if o.writing.Running() {
 		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
 		writeCount := fmt.Sprintf("%d written", o.writeRateTracker.Count())
 
-		s.Stream = fmt.Sprintf("%s %s", s.BufferStatus(buffer), writeCount)
+		return fmt.Sprintf("%s %s", status.BufferStatus(buffer), writeCount)
 	} else if o.writing.Complete() {
-		s.Stream = "-COMPLETE-"
-	} else if o.writing.Errored() || o.streamRead.Errored() {
-		s.Stream = "-ERRORED-"
+		return completeMsg
 	}
+	return ""
+}
+
+func (o *StreamOperation) Rate() string {
+	if o.writing.Running() {
+		return fmt.Sprintf("%s (%s latent)", o.writeRateTracker.RecordsPerSecond(), o.writeLatency.Status())
+	}
+	return ""
 }
 
 func (o *StreamOperation) readStream() error {

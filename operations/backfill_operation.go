@@ -94,19 +94,24 @@ func (o *BackfillOperation) Run() error {
 	return collator.Run()
 }
 
-func (o *BackfillOperation) Status(s *status.Status) {
+func (o *BackfillOperation) Status() string {
 	if o.writing.Complete() {
-		s.Backfill = "-COMPLETE-"
+		return completeMsg
 	} else if o.errored() {
-		s.Backfill = "-ERRORED-"
+		return erroredMsg
 	} else {
-		s.Rate = o.wcuRateTracker.RecordsPerSecond()
-
 		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
 		writeCount := fmt.Sprintf("%d written", o.writeRateTracker.Count())
 
-		s.Backfill = fmt.Sprintf("%s %s", s.BufferStatus(buffer), writeCount)
+		return fmt.Sprintf("%s %s", status.BufferStatus(buffer), writeCount)
 	}
+}
+
+func (o *BackfillOperation) Rate() string {
+	if o.writing.Running() {
+		return o.wcuRateTracker.RecordsPerSecond()
+	}
+	return ""
 }
 
 func (o *BackfillOperation) scan() error {
