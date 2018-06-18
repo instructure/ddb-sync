@@ -8,6 +8,8 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
+var ErrExit = flag.ErrHelp
+
 func ParseArgs(args []string) ([]config.OperationPlan, error) {
 	flagSet := newFlagSet()
 
@@ -19,8 +21,12 @@ func ParseArgs(args []string) ([]config.OperationPlan, error) {
 
 	err := flagSet.Parse(args)
 	if err != nil {
-		fmt.Println("ddb-sync:")
-		fmt.Println(flagSet.FlagUsages())
+		// spf13/pflag does weirdness on "-h", "-help", or "--help" and throws a special error and prints usage.
+		// We don't want to double message or print a weird error message out.
+		if err != ErrExit {
+			fmt.Println("ddb-sync:")
+			fmt.Println(flagSet.FlagUsages())
+		}
 		return nil, err
 	}
 

@@ -19,7 +19,9 @@ var StopSignals = []os.Signal{
 func main() {
 	plan, err := ParseArgs(os.Args[1:])
 	if err != nil {
-		fmt.Printf("[ERROR] %v\n", err)
+		if err != ErrExit {
+			fmt.Printf("[ERROR] %v\n", err)
+		}
 		os.Exit(1)
 	}
 
