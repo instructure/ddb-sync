@@ -28,7 +28,7 @@ type StreamOperation struct {
 
 	receivedCount int64
 
-	writeLatency latencyLock
+	writeLatency LatencyLock
 
 	c         chan dynamodbstreams.Record
 	streamARN string
