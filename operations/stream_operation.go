@@ -38,8 +38,9 @@ type StreamOperation struct {
 
 	watcher *shard_watcher.Watcher
 
-	wcuRateTracker   *RateTracker
-	writeRateTracker *RateTracker
+	ingestRateTracker *RateTracker
+	wcuRateTracker    *RateTracker
+	writeRateTracker  *RateTracker
 }
 
 func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*StreamOperation, error) {
@@ -63,8 +64,9 @@ func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFu
 		inputDescribeTableClient: inputDescribeTableClient,
 		outputClient:             outputClient,
 
-		wcuRateTracker:   NewRateTracker(3 * time.Second),
-		writeRateTracker: NewRateTracker(3 * time.Second),
+		ingestRateTracker: NewRateTracker("Items", 9*time.Second),
+		wcuRateTracker:    NewRateTracker("WCUs", 9*time.Second),
+		writeRateTracker:  NewRateTracker("Items", 9*time.Second),
 	}, nil
 }
 
@@ -84,8 +86,11 @@ func (o *StreamOperation) Preflights(in *dynamodb.DescribeTableOutput, _ *dynamo
 }
 
 func (o *StreamOperation) Run() error {
+	o.ingestRateTracker.Start()
 	o.wcuRateTracker.Start()
 	o.writeRateTracker.Start()
+
+	defer o.ingestRateTracker.Stop()
 	defer o.wcuRateTracker.Stop()
 	defer o.writeRateTracker.Stop()
 
@@ -106,10 +111,7 @@ func (o *StreamOperation) Status() string {
 	if !o.watcher.Running() {
 		return pendingMsg
 	} else if o.writing.Running() {
-		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
-		writeCount := fmt.Sprintf("%d written", o.writeRateTracker.Count())
-
-		return fmt.Sprintf("%s %s", status.BufferStatus(buffer), writeCount)
+		return fmt.Sprintf("%d written (%s latent)", o.writeRateTracker.Count(), o.writeLatency.Status())
 	} else if o.writing.Complete() {
 		return completeMsg
 	}
@@ -118,7 +120,8 @@ func (o *StreamOperation) Status() string {
 
 func (o *StreamOperation) Rate() string {
 	if o.writing.Running() {
-		return fmt.Sprintf("%s (%s latent)", o.writeRateTracker.RecordsPerSecond(), o.writeLatency.Status())
+		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
+		return fmt.Sprintf("%s %s %s", o.ingestRateTracker.RatePerSecond(), status.BufferStatus(buffer), o.wcuRateTracker.RatePerSecond())
 	}
 	return ""
 }
@@ -183,6 +186,7 @@ func (o *StreamOperation) processShard(shard *shard_tree.Shard) error {
 	for recordOutput.NextShardIterator != nil && *recordOutput.NextShardIterator != "" {
 		for _, record := range recordOutput.Records {
 			atomic.AddInt64(&o.receivedCount, 1)
+			o.ingestRateTracker.Increment(1)
 			select {
 			case o.c <- *record:
 			case <-done:

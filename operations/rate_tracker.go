@@ -13,8 +13,10 @@ import (
 type RateTracker struct {
 	m sync.RWMutex
 
-	rateTime   time.Time
+	rateType string
+
 	rateTicker *time.Ticker
+	rateTime   time.Time
 
 	countAtLastReset int64
 	counter          int64
@@ -22,10 +24,12 @@ type RateTracker struct {
 }
 
 // Return a new RateTracker
-func NewRateTracker(tickFreq time.Duration) *RateTracker {
+func NewRateTracker(rateType string, tickFreq time.Duration) *RateTracker {
 	return &RateTracker{
-		rateTime:   time.Now(),
+		rateType: rateType,
+
 		rateTicker: time.NewTicker(tickFreq),
+		rateTime:   time.Now(),
 	}
 }
 
@@ -69,9 +73,9 @@ func (t *RateTracker) ApproximateCount() string {
 	return log.Approximate(int(t.Count()))
 }
 
-// RecordsPerSecond returns a pretty formatted description of the rate from the last completed window
-func (t *RateTracker) RecordsPerSecond() string {
+// RatePerSecond returns a pretty formatted description of the rate from the last completed window
+func (t *RateTracker) RatePerSecond() string {
 	t.m.RLock()
 	defer t.m.RUnlock()
-	return fmt.Sprintf("%.f/s", t.lastRate)
+	return fmt.Sprintf("%.f %s/s", t.lastRate, t.rateType)
 }

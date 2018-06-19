@@ -3,6 +3,7 @@ package operations
 import (
 	"context"
 	"fmt"
+	"math"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -32,8 +33,8 @@ type BackfillOperation struct {
 
 	approximateItemCount      int64
 	approximateTableSizeBytes int64
-	scanCount                 int64
 
+	rcuRateTracker   *RateTracker
 	wcuRateTracker   *RateTracker
 	writeRateTracker *RateTracker
 }
@@ -58,8 +59,9 @@ func NewBackfillOperation(ctx context.Context, plan config.OperationPlan, cancel
 		inputClient:  inputClient,
 		outputClient: outputClient,
 
-		wcuRateTracker:   NewRateTracker(3 * time.Second),
-		writeRateTracker: NewRateTracker(3 * time.Second),
+		rcuRateTracker:   NewRateTracker("RCUs", 9*time.Second),
+		wcuRateTracker:   NewRateTracker("WCUs", 9*time.Second),
+		writeRateTracker: NewRateTracker("Written Items", 9*time.Second),
 	}, nil
 }
 
@@ -80,8 +82,11 @@ func (o *BackfillOperation) Preflights(_ *dynamodb.DescribeTableOutput, _ *dynam
 }
 
 func (o *BackfillOperation) Run() error {
+	o.rcuRateTracker.Start()
 	o.wcuRateTracker.Start()
 	o.writeRateTracker.Start()
+
+	defer o.rcuRateTracker.Stop()
 	defer o.wcuRateTracker.Stop()
 	defer o.writeRateTracker.Stop()
 
@@ -100,16 +105,14 @@ func (o *BackfillOperation) Status() string {
 	} else if o.errored() {
 		return erroredMsg
 	} else {
-		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
-		writeCount := fmt.Sprintf("%d written", o.writeRateTracker.Count())
-
-		return fmt.Sprintf("%s %s", status.BufferStatus(buffer), writeCount)
+		return fmt.Sprintf("%d written", o.writeRateTracker.Count())
 	}
 }
 
 func (o *BackfillOperation) Rate() string {
 	if o.writing.Running() {
-		return o.wcuRateTracker.RecordsPerSecond()
+		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
+		return fmt.Sprintf("%s %s %s", o.rcuRateTracker.RatePerSecond(), status.BufferStatus(buffer), o.wcuRateTracker.RatePerSecond())
 	}
 	return ""
 }
@@ -119,32 +122,22 @@ func (o *BackfillOperation) scan() error {
 	o.scanning.Start()
 
 	input := &dynamodb.ScanInput{
-		TableName: &o.OperationPlan.Input.TableName,
+		ReturnConsumedCapacity: aws.String("TOTAL"),
+		TableName:              &o.OperationPlan.Input.TableName,
 	}
 
 	done := o.context.Done()
 
 	scanHandler := func(output *dynamodb.ScanOutput, lastPage bool) bool {
-		var lastReported time.Time
-		var itemsReported int
+		o.rcuRateTracker.Increment(int64(math.Ceil(*output.ConsumedCapacity.CapacityUnits)))
 
-		for i, item := range output.Items {
-			if lastReported.Before(time.Now().Add(time.Second)) {
-				lastReported = time.Now()
-
-				atomic.AddInt64(&o.scanCount, int64(i-itemsReported))
-				itemsReported = i
-			}
-
+		for _, item := range output.Items {
 			select {
 			case o.c <- BackfillRecord{Item: item}:
 			case <-done:
 				return false
 			}
 		}
-
-		atomic.AddInt64(&o.scanCount, int64(len(output.Items)-itemsReported))
-
 		return true
 	}
 
@@ -272,7 +265,7 @@ func (o *BackfillOperation) UpdateConsumedCapacity(capacities []*dynamodb.Consum
 		agg = agg + *cap.CapacityUnits
 	}
 
-	o.wcuRateTracker.Increment(int64(agg))
+	o.wcuRateTracker.Increment(int64(math.Ceil(agg)))
 }
 
 func (o *BackfillOperation) ApproximateItemCount() int64 {
@@ -281,10 +274,6 @@ func (o *BackfillOperation) ApproximateItemCount() int64 {
 
 func (o *BackfillOperation) ApproximateTableSizeBytes() int64 {
 	return atomic.LoadInt64(&o.approximateTableSizeBytes)
-}
-
-func (o *BackfillOperation) ScanCount() int64 {
-	return atomic.LoadInt64(&o.scanCount)
 }
 
 func (o *BackfillOperation) BufferFill() int {

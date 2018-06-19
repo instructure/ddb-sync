@@ -55,7 +55,7 @@ func (s *Set) Delimiter() string {
 }
 
 func (s *Set) Header() []string {
-	return []string{"Table", "Describe", "Backfill", "Stream", "WCU Rate"}
+	return []string{"TABLE", "DETAILS", "BACKFILL", "STREAM", "RATES & BUFFER"}
 }
 
 func (s *Set) Display() []string {
