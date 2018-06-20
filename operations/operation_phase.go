@@ -83,21 +83,22 @@ func (p *Phase) transition(toPhase OperationPhase) error {
 	p.m.Lock()
 	defer p.m.Unlock()
 
+	validTargetPhase := Errored
+
 	switch p.opPhase {
 	case Initialized:
-		if toPhase != Started {
-			p.opPhase = Errored
-			return errBadTransition
-		}
+		validTargetPhase = Started
 	case Started:
-		if toPhase != Finished {
-			p.opPhase = Errored
-			return errBadTransition
-		}
+		validTargetPhase = Finished
 	case Finished:
 		return errBadTransition
 	case Errored:
 		return nil
+	}
+
+	if toPhase != validTargetPhase {
+		p.opPhase = Errored
+		return errBadTransition
 	}
 
 	p.opPhase = toPhase

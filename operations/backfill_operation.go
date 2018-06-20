@@ -91,9 +91,7 @@ func (o *BackfillOperation) Run() error {
 	collator.Register(o.scan)
 	collator.Register(o.batchWrite)
 
-	finalErr := collator.Run()
-
-	return finalErr
+	return collator.Run()
 }
 
 func (o *BackfillOperation) Status(s *status.Status) {
