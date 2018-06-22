@@ -33,12 +33,14 @@ func NewDispatcher(plans []config.OperationPlan) (*Dispatcher, error) {
 		if err != nil {
 			log.Printf("[ERROR] %v\n", err)
 			finalErr = err
+			continue
 		}
 
 		operator, err := operations.NewOperator(ctx, plan, cancel)
 		if err != nil {
 			log.Printf("[ERROR] %v\n", err)
 			finalErr = err
+			continue
 		}
 		operators = append(operators, operator)
 	}
