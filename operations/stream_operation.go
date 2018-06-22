@@ -111,7 +111,7 @@ func (o *StreamOperation) Status() string {
 // Checkpoint is a periodic status output meant for historical tracking.  This will be called when an update is desired.
 func (o *StreamOperation) Checkpoint() string {
 	if o.writing.Running() {
-		return fmt.Sprintf("%s Streaming: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), o.writtenItemRateTracker.Duration().String())
+		return fmt.Sprintf("%s: Streaming: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), o.writtenItemRateTracker.Duration().String())
 	}
 	return ""
 }
@@ -126,17 +126,17 @@ func (o *StreamOperation) Rate() string {
 
 func (o *StreamOperation) readStream() error {
 	defer close(o.c)
-	log.Printf("%s Streaming started…", o.OperationPlan.Description())
+	log.Printf("%s: Streaming started…", o.OperationPlan.Description())
 	o.streamRead.Start()
 
 	watcherInput := &shard_watcher.RunInput{
 		Context:           o.context,
 		ContextCancelFunc: o.contextCancelFunc,
 
-		InputTableName:  o.OperationPlan.Input.TableName,
-		OutputTableName: o.OperationPlan.Output.TableName,
-		StreamARN:       o.streamARN,
-		Client:          o.inputClient,
+		InputTableName:       o.OperationPlan.Input.TableName,
+		OperationDescription: o.OperationPlan.Description(),
+		StreamARN:            o.streamARN,
+		Client:               o.inputClient,
 
 		ShardProcessor: o.processShard,
 	}
@@ -145,7 +145,7 @@ func (o *StreamOperation) readStream() error {
 
 	err := o.watcher.RunWorkers()
 	if err == nil {
-		log.Printf("%s Stream closed: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), o.writtenItemRateTracker.Duration().String())
+		log.Printf("%s: Stream closed: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), o.writtenItemRateTracker.Duration().String())
 		o.streamRead.Finish()
 	} else {
 		o.streamRead.Error()

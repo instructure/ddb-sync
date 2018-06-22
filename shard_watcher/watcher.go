@@ -21,8 +21,8 @@ type RunInput struct {
 	Context           context.Context
 	ContextCancelFunc context.CancelFunc
 
-	InputTableName  string
-	OutputTableName string
+	InputTableName       string
+	OperationDescription string
 
 	StreamARN      string
 	Client         *dynamodbstreams.DynamoDBStreams
@@ -68,7 +68,7 @@ func (w *Watcher) dispatchWork() error {
 }
 
 func (w *Watcher) logShardCompletion() {
-	log.Printf("[%s] ⇨ [%s] Shard complete. %d completed.\n", w.InputTableName, w.OutputTableName, w.DispatchedCount())
+	log.Printf("%s: Shard complete. %d/%d completed.\n", w.OperationDescription, w.DispatchedCount(), w.tree.Count())
 }
 
 func (w *Watcher) RunWorkers() error {

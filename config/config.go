@@ -78,7 +78,7 @@ func (p OperationPlan) WithDefaults() OperationPlan {
 // Description returns a description of the operation input/output
 // "InputTableName => OutputTableName:"
 func (p OperationPlan) Description() string {
-	return fmt.Sprintf("[%s] ⇨ [%s]:", p.Input.TableName, p.Output.TableName)
+	return fmt.Sprintf("[%s] ⇨ [%s]", p.Input.TableName, p.Output.TableName)
 }
 
 func (p OperationPlan) Validate() error {

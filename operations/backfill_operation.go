@@ -117,17 +117,9 @@ func (o *BackfillOperation) Rate() string {
 // Checkpoint prints a logging statement summarizing the current state.  Meant for periodic update requests.
 func (o *BackfillOperation) Checkpoint() string {
 	if o.writing.Running() {
-		return fmt.Sprintf("%s Backfill in progress: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), o.writtenItemRateTracker.Duration().String())
-	}
-	if o.writing.Complete() {
-		return o.checkpointComplete()
+		return fmt.Sprintf("%s: Backfill in progress: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), o.writtenItemRateTracker.Duration().String())
 	}
 	return ""
-}
-
-func (o *BackfillOperation) checkpointComplete() string {
-	// TODO: make this log
-	return fmt.Sprintf("%s Backfill complete: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), o.writtenItemRateTracker.Duration().String())
 }
 
 func (o *BackfillOperation) scan() error {
@@ -159,16 +151,15 @@ func (o *BackfillOperation) scan() error {
 	err := o.inputClient.ScanPagesWithContext(o.context, input, scanHandler)
 	if err != nil {
 		o.scanning.Error()
-		return fmt.Errorf("%s Backfill failed: (Scan) %v", o.OperationPlan.Description(), err)
+		return fmt.Errorf("%s: Backfill failed: (Scan) %v", o.OperationPlan.Description(), err)
 	}
 
-	// check if the context has been canceled
 	select {
 	case <-done:
 		return o.context.Err()
 
 	default:
-		log.Printf("[%s] Scan complete.", o.OperationPlan.Input.TableName)
+		log.Printf("%s: Backfill: scan complete %d items read over %s", o.OperationPlan.Description(), o.readItemRateTracker.Count(), o.readItemRateTracker.Duration().String())
 		o.scanning.Finish()
 		return nil
 	}
@@ -186,7 +177,7 @@ func (o *BackfillOperation) batchWrite() error {
 
 	err := collator.Run()
 	if err == nil {
-		log.Println(o.checkpointComplete())
+		log.Printf("%s: Backfill complete: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), o.writtenItemRateTracker.Duration().String())
 
 		o.writing.Finish()
 		return nil
@@ -194,7 +185,7 @@ func (o *BackfillOperation) batchWrite() error {
 
 	if err != context.Canceled {
 		o.writing.Error()
-		return fmt.Errorf("[%s] ⇨ [%s]: Backfill failed: (BatchWriteItem) %v", o.OperationPlan.Input.TableName, o.OperationPlan.Output.TableName, err)
+		return fmt.Errorf("%s: Backfill failed: (BatchWriteItem) %v", o.OperationPlan.Description(), err)
 	}
 
 	return err

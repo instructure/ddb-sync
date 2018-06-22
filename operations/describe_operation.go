@@ -73,7 +73,6 @@ func (o *DescribeOperation) Status() string {
 }
 
 func (o *DescribeOperation) describe() {
-	log.Printf("%s Describing…\n", o.OperationPlan.Description())
 	output, _ := o.inputClient.DescribeTableWithContext(o.context, &dynamodb.DescribeTableInput{TableName: aws.String(o.OperationPlan.Input.TableName)})
 
 	atomic.StoreInt64(&o.approximateItemCount, *output.Table.ItemCount)
