@@ -21,9 +21,8 @@ type StreamOperation struct {
 	context           context.Context
 	contextCancelFunc context.CancelFunc
 
-	inputDescribeTableClient *dynamodb.DynamoDB
-	inputClient              *dynamodbstreams.DynamoDBStreams
-	outputClient             *dynamodb.DynamoDB
+	inputClient  *dynamodbstreams.DynamoDBStreams
+	outputClient *dynamodb.DynamoDB
 
 	writeLatency LatencyLock
 
@@ -47,7 +46,6 @@ func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFu
 	}
 
 	inputClient := dynamodbstreams.New(inputSession)
-	inputDescribeTableClient := dynamodb.New(inputSession)
 	outputClient := dynamodb.New(outputSession)
 
 	return &StreamOperation{
@@ -57,9 +55,8 @@ func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFu
 
 		c: make(chan dynamodbstreams.Record, 3500),
 
-		inputClient:              inputClient,
-		inputDescribeTableClient: inputDescribeTableClient,
-		outputClient:             outputClient,
+		inputClient:  inputClient,
+		outputClient: outputClient,
 
 		readItemRateTracker:    NewRateTracker("Items", 9*time.Second),
 		wcuRateTracker:         NewRateTracker("WCUs", 9*time.Second),
@@ -132,11 +129,6 @@ func (o *StreamOperation) readStream() error {
 	log.Printf("%s Streaming started…", o.OperationPlan.Description())
 	o.streamRead.Start()
 
-	err := o.lookupLatestStreamARN(o.OperationPlan.Input.TableName)
-	if err != nil {
-		return err
-	}
-
 	watcherInput := &shard_watcher.RunInput{
 		Context:           o.context,
 		ContextCancelFunc: o.contextCancelFunc,
@@ -151,7 +143,7 @@ func (o *StreamOperation) readStream() error {
 
 	o.watcher = shard_watcher.New(watcherInput)
 
-	err = o.watcher.RunWorkers()
+	err := o.watcher.RunWorkers()
 	if err == nil {
 		log.Printf("%s Stream closed: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), o.writtenItemRateTracker.Duration().String())
 		o.streamRead.Finish()
@@ -203,22 +195,6 @@ func (o *StreamOperation) processShard(shard *shard_tree.Shard) error {
 			return err
 		}
 	}
-	return nil
-}
-
-func (o *StreamOperation) lookupLatestStreamARN(tableName string) error {
-	tableOutput, err := o.inputDescribeTableClient.DescribeTableWithContext(
-		o.context,
-		&dynamodb.DescribeTableInput{
-			TableName: &o.OperationPlan.Input.TableName,
-		},
-	)
-
-	if err != nil {
-		return err
-	}
-
-	o.streamARN = *tableOutput.Table.LatestStreamArn
 	return nil
 }
 
