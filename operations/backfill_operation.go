@@ -16,6 +16,16 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
+type BackfillRecord map[string]*dynamodb.AttributeValue
+
+func (r *BackfillRecord) request() *dynamodb.WriteRequest {
+	return &dynamodb.WriteRequest{
+		PutRequest: &dynamodb.PutRequest{
+			Item: map[string]*dynamodb.AttributeValue(*r),
+		},
+	}
+}
+
 type BackfillOperation struct {
 	OperationPlan     config.OperationPlan
 	context           context.Context
@@ -59,18 +69,6 @@ func NewBackfillOperation(ctx context.Context, plan config.OperationPlan, cancel
 		wcuRateTracker:         NewRateTracker("WCUs", 9*time.Second),
 		writtenItemRateTracker: NewRateTracker("Written Items", 9*time.Second),
 	}, nil
-}
-
-type BackfillRecord struct {
-	Item map[string]*dynamodb.AttributeValue
-}
-
-func (r *BackfillRecord) Request() *dynamodb.WriteRequest {
-	return &dynamodb.WriteRequest{
-		PutRequest: &dynamodb.PutRequest{
-			Item: r.Item,
-		},
-	}
 }
 
 func (o *BackfillOperation) Preflights(_ *dynamodb.DescribeTableOutput, _ *dynamodb.DescribeTableOutput) error {
@@ -144,7 +142,7 @@ func (o *BackfillOperation) scan() error {
 
 		for _, item := range output.Items {
 			select {
-			case o.c <- BackfillRecord{Item: item}:
+			case o.c <- BackfillRecord(item):
 			case <-done:
 				return false
 			}
@@ -216,7 +214,7 @@ channel:
 
 			o.backfillBeginOnce.Do(o.signalBackfillStart)
 
-			batch = append(batch, record.Request())
+			batch = append(batch, record.request())
 			if len(batch) == 25 {
 				requestItems := map[string][]*dynamodb.WriteRequest{o.OperationPlan.Output.TableName: batch}
 				batch = batch[:0]
