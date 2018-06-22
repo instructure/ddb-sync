@@ -40,6 +40,7 @@ type BackfillOperation struct {
 	scanning Phase
 	writing  Phase
 
+	readItemRateTracker    *RateTracker
 	rcuRateTracker         *RateTracker
 	wcuRateTracker         *RateTracker
 	writtenItemRateTracker *RateTracker
@@ -65,6 +66,7 @@ func NewBackfillOperation(ctx context.Context, plan config.OperationPlan, cancel
 		inputClient:  inputClient,
 		outputClient: outputClient,
 
+		readItemRateTracker:    NewRateTracker("Read Items", 9*time.Second),
 		rcuRateTracker:         NewRateTracker("RCUs", 9*time.Second),
 		wcuRateTracker:         NewRateTracker("WCUs", 9*time.Second),
 		writtenItemRateTracker: NewRateTracker("Written Items", 9*time.Second),
@@ -76,10 +78,12 @@ func (o *BackfillOperation) Preflights(_ *dynamodb.DescribeTableOutput, _ *dynam
 }
 
 func (o *BackfillOperation) Run() error {
+	o.readItemRateTracker.Start()
 	o.rcuRateTracker.Start()
 	o.wcuRateTracker.Start()
 	o.writtenItemRateTracker.Start()
 
+	defer o.readItemRateTracker.Stop()
 	defer o.rcuRateTracker.Stop()
 	defer o.wcuRateTracker.Stop()
 	defer o.writtenItemRateTracker.Stop()
@@ -141,6 +145,8 @@ func (o *BackfillOperation) scan() error {
 		o.rcuRateTracker.Increment(int64(math.Ceil(*output.ConsumedCapacity.CapacityUnits)))
 
 		for _, item := range output.Items {
+			o.readItemRateTracker.Increment(1)
+
 			select {
 			case o.c <- BackfillRecord(item):
 			case <-done:
