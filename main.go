@@ -12,7 +12,7 @@ import (
 )
 
 const displayTickerTime = 500 * time.Millisecond
-const checkpointTickerTime = 1 * time.Minute
+const checkpointTickerTime = 20 * time.Minute
 
 var StopSignals = []os.Signal{
 	os.Interrupt,
@@ -37,23 +37,19 @@ func main() {
 		os.Exit(2)
 	}
 
-	dispatcher.Start()
-
 	displayStatus(dispatcher)
 
 	// Start the signal handler
 	StartSignalHandler(dispatcher)
 
-	// Start the display ticker
+	// Start the output tickers
 	displayTicker := StartDisplayTicker(dispatcher)
-
-	// Start a checkpoint ticker
 	checkpointTicker := StartCheckpointTicker(dispatcher)
 
-	// Wait for all operators to indicate completion
-	err = dispatcher.Wait()
-	displayTicker.Stop()
+	err = dispatcher.Run()
+
 	checkpointTicker.Stop()
+	displayTicker.Stop()
 
 	displayStatus(dispatcher)
 

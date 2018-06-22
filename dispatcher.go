@@ -17,9 +17,6 @@ type Dispatcher struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
-
-	errLock sync.Mutex
-	err     error
 }
 
 func NewDispatcher(plans []config.OperationPlan) (*Dispatcher, error) {
@@ -65,26 +62,16 @@ func (d *Dispatcher) Preflights() error {
 	return finalErr
 }
 
-func (d *Dispatcher) Start() {
+func (d *Dispatcher) Run() error {
 	collator := operations.ErrorCollator{
 		Cancel: d.cancel,
 	}
 
-	d.operatorsWG.Add(len(d.Operators))
-	for i := range d.Operators {
-		operator := d.Operators[i]
-		collator.Register(func() error {
-			defer d.operatorsWG.Done()
-			return operator.Run()
-		})
+	for _, operator := range d.Operators {
+		collator.Register(operator.Run)
 	}
 
-	go func() {
-		d.errLock.Lock()
-		defer d.errLock.Unlock()
-
-		d.err = collator.Run()
-	}()
+	return collator.Run()
 }
 
 func (d *Dispatcher) Checkpoint() {
@@ -108,12 +95,4 @@ func (d *Dispatcher) Statuses() *status.Set {
 
 func (d *Dispatcher) Cancel() {
 	d.cancel()
-}
-
-func (d *Dispatcher) Wait() error {
-	d.operatorsWG.Wait()
-
-	d.errLock.Lock()
-	defer d.errLock.Unlock()
-	return d.err
 }
