@@ -20,6 +20,16 @@ const preflightRetries = 7
 
 var ErrOperationFailed = errors.New("Operation failed")
 
+type operatorPhase int
+
+const (
+	NotStartedPhase operatorPhase = iota
+	BackfillPhase
+	StreamPhase
+	NoopPhase
+	CompletedPhase
+)
+
 type Operation interface {
 	Checkpoint() string
 	Preflights(*dynamodb.DescribeTableOutput, *dynamodb.DescribeTableOutput) error
@@ -28,24 +38,14 @@ type Operation interface {
 	Status() string
 }
 
-type OperatorPhase int
-
-const (
-	NotStartedPhase OperatorPhase = iota
-	BackfillPhase
-	StreamPhase
-	NoopPhase
-	CompletedPhase
-)
-
 type Operator struct {
 	OperationPlan config.OperationPlan
 
 	context           context.Context
 	contextCancelFunc context.CancelFunc
 
-	operationLock  sync.Mutex
-	operationPhase OperatorPhase
+	mOperatorPhase sync.Mutex
+	operatorPhase  operatorPhase
 
 	describe *DescribeOperation
 
@@ -124,9 +124,9 @@ func (o *Operator) Run() error {
 	defer o.describe.Stop()
 
 	if o.backfill != nil {
-		o.operationLock.Lock()
-		o.operationPhase = BackfillPhase
-		o.operationLock.Unlock()
+		o.mOperatorPhase.Lock()
+		o.operatorPhase = BackfillPhase
+		o.mOperatorPhase.Unlock()
 
 		err := o.backfill.Run()
 		if err != nil {
@@ -135,9 +135,9 @@ func (o *Operator) Run() error {
 	}
 
 	if o.stream != nil {
-		o.operationLock.Lock()
-		o.operationPhase = StreamPhase
-		o.operationLock.Unlock()
+		o.mOperatorPhase.Lock()
+		o.operatorPhase = StreamPhase
+		o.mOperatorPhase.Unlock()
 
 		err := o.stream.Run()
 		if err != nil {
@@ -145,16 +145,22 @@ func (o *Operator) Run() error {
 		}
 	}
 
-	o.operationPhase = CompletedPhase
-
-	if o.OperationPlan.Backfill.Disabled && o.OperationPlan.Stream.Disabled {
-		o.operationPhase = NoopPhase
+	o.mOperatorPhase.Lock()
+	if o.backfill == nil && o.stream == nil {
+		o.operatorPhase = NoopPhase
+	} else {
+		o.operatorPhase = CompletedPhase
 	}
+	o.mOperatorPhase.Unlock()
+
 	return nil
 }
 
 func (o *Operator) Checkpoint() string {
-	switch o.operationPhase {
+	o.mOperatorPhase.Lock()
+	defer o.mOperatorPhase.Unlock()
+
+	switch o.operatorPhase {
 	case NotStartedPhase:
 		return fmt.Sprintf("%s Waiting", o.OperationPlan.Description())
 	case BackfillPhase:
@@ -168,8 +174,6 @@ func (o *Operator) Checkpoint() string {
 }
 
 func (o *Operator) Status() *status.Status {
-	o.operationLock.Lock()
-	defer o.operationLock.Unlock()
 	status := status.New(o.OperationPlan)
 
 	status.Description = o.describe.Status()
@@ -182,7 +186,10 @@ func (o *Operator) Status() *status.Status {
 		status.Stream = o.stream.Status()
 	}
 
-	switch o.operationPhase {
+	o.mOperatorPhase.Lock()
+	defer o.mOperatorPhase.Unlock()
+
+	switch o.operatorPhase {
 	case NotStartedPhase:
 		status.SetWaiting()
 	case BackfillPhase:
@@ -209,7 +216,7 @@ func (o *Operator) getTableDescription(client *dynamodb.DynamoDB, tableName stri
 			if awsErr.Code() == "ResourceNotFoundException" {
 				return nil, fmt.Errorf("[%s] Failed pre-flight check: table does not exist", tableName)
 			}
-			return nil, fmt.Errorf("[%s] describe table operation failed with %v", tableName, err)
+			return nil, fmt.Errorf("[%s] Describe table operation failed with %v", tableName, err)
 		}
 		return nil, err
 	}
