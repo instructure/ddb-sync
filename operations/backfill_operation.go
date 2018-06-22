@@ -61,7 +61,7 @@ func NewBackfillOperation(ctx context.Context, plan config.OperationPlan, cancel
 		context:           ctx,
 		contextCancelFunc: cancelFunc,
 
-		c: make(chan BackfillRecord, 3500),
+		c: make(chan BackfillRecord, recordChanBuffer),
 
 		inputClient:  inputClient,
 		outputClient: outputClient,
@@ -108,8 +108,7 @@ func (o *BackfillOperation) Status() string {
 
 func (o *BackfillOperation) Rate() string {
 	if o.writing.Running() {
-		buffer := float64(o.bufferFill()) / float64(o.bufferCapacity())
-		return fmt.Sprintf("%s %s %s", o.rcuRateTracker.RatePerSecond(), status.BufferStatus(buffer), o.wcuRateTracker.RatePerSecond())
+		return fmt.Sprintf("%s %s %s", o.rcuRateTracker.RatePerSecond(), status.BufferStatus(o.bufferFill(), o.bufferCapacity()), o.wcuRateTracker.RatePerSecond())
 	}
 	return ""
 }

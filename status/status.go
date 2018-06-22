@@ -2,19 +2,9 @@ package status
 
 import (
 	"fmt"
-	"math"
 
 	"gerrit.instructure.com/ddb-sync/config"
 )
-
-// BufferStates are single character "fullness" indicators of the buffer
-var BufferStates = []string{
-	"○",
-	"◔",
-	"◑",
-	"◕",
-	"●",
-}
 
 type Status struct {
 	Plan config.OperationPlan
@@ -34,17 +24,6 @@ func New(plan config.OperationPlan) *Status {
 		Backfill:    "  --  ",
 		Stream:      "  --  ",
 	}
-}
-
-func BufferStatus(percentage float64) string {
-	// We need to grab the closest bar char
-	if percentage > 1.0 {
-		percentage = 1.0
-	} else if percentage < 0.0 {
-		percentage = 0.0
-	}
-	selection := int(math.Ceil(float64(len(BufferStates)-1) * percentage))
-	return fmt.Sprintf("⇨ %s ⇨", BufferStates[selection])
 }
 
 func (s *Status) Display() []string {

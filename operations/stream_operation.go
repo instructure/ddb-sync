@@ -62,7 +62,7 @@ func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFu
 		context:           ctx,
 		contextCancelFunc: cancelFunc,
 
-		c: make(chan dynamodbstreams.Record, 3500),
+		c: make(chan dynamodbstreams.Record, recordChanBuffer),
 
 		inputClient:  inputClient,
 		outputClient: outputClient,
@@ -129,8 +129,7 @@ func (o *StreamOperation) Checkpoint() string {
 
 func (o *StreamOperation) Rate() string {
 	if o.writing.Running() {
-		buffer := float64(o.bufferFill()) / float64(o.bufferCapacity())
-		return fmt.Sprintf("%s %s %s", o.readItemRateTracker.RatePerSecond(), status.BufferStatus(buffer), o.wcuRateTracker.RatePerSecond())
+		return fmt.Sprintf("%s %s %s", o.readItemRateTracker.RatePerSecond(), status.BufferStatus(o.bufferFill(), o.bufferCapacity()), o.wcuRateTracker.RatePerSecond())
 	}
 	return ""
 }
