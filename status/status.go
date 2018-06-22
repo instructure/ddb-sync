@@ -67,14 +67,17 @@ func (s *Status) addContent(str string) {
 	s.output = append(s.output, str)
 }
 
-func (s *Status) WaitingStatus() {
+// SetWaiting update description to indicate waiting status
+func (s *Status) SetWaiting() {
 	s.Description = "Waiting..."
 }
 
-func (s *Status) NoopStatus() {
+// SetNoop update description to indicate Noop
+func (s *Status) SetNoop() {
 	s.Description = "Nothing to do"
 }
 
-func (s *Status) ErrorStatus() {
+// SetError update description to indicate error status
+func (s *Status) SetError() {
 	s.Description = "Error!"
 }

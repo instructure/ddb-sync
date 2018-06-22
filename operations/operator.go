@@ -184,16 +184,16 @@ func (o *Operator) Status() *status.Status {
 
 	switch o.operationPhase {
 	case NotStartedPhase:
-		status.WaitingStatus()
+		status.SetWaiting()
 	case BackfillPhase:
 		status.Rate = o.backfill.Rate()
 	case StreamPhase:
 		status.Rate = o.stream.Rate()
 	case NoopPhase:
-		status.NoopStatus()
+		status.SetNoop()
 	case CompletedPhase:
 	default:
-		status.ErrorStatus()
+		status.SetError()
 	}
 	return status
 }
