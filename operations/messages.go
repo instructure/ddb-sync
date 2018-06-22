@@ -1,6 +1,6 @@
 package operations
 
-var (
+const (
 	erroredMsg  = "-ERRORED-"
 	completeMsg = "-COMPLETE-"
 	pendingMsg  = "-PENDING-"
