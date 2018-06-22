@@ -24,13 +24,14 @@ type RunInput struct {
 	InputTableName       string
 	OperationDescription string
 
-	StreamARN      string
-	Client         *dynamodbstreams.DynamoDBStreams
-	ShardProcessor func(*shard_tree.Shard) error
+	Client *dynamodbstreams.DynamoDBStreams
 }
 
 type Watcher struct {
 	*RunInput
+
+	ShardProcessor func(*shard_tree.Shard) error
+	StreamARN      string
 
 	tree *shard_tree.ShardTree
 
@@ -85,6 +86,7 @@ loop:
 			if result.err != nil {
 				finalErr = result.err
 				w.ContextCancelFunc()
+				continue
 			}
 			w.tree.ShardComplete(result.shard)
 			w.logShardCompletion()
@@ -94,11 +96,12 @@ loop:
 				w.ContextCancelFunc()
 			}
 
-			if finalErr != nil && atomic.LoadInt32(&w.workerCount) == 0 {
-				break loop
-			}
 		case <-w.Context.Done():
 			finalErr = w.Context.Err()
+		}
+
+		if finalErr != nil && atomic.LoadInt32(&w.workerCount) == 0 {
+			break loop
 		}
 	}
 	close(w.results)

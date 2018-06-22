@@ -48,6 +48,15 @@ func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFu
 	inputClient := dynamodbstreams.New(inputSession)
 	outputClient := dynamodb.New(outputSession)
 
+	watcherInput := &shard_watcher.RunInput{
+		Context:           ctx,
+		ContextCancelFunc: cancelFunc,
+
+		InputTableName:       plan.Input.TableName,
+		OperationDescription: plan.Description(),
+		Client:               inputClient,
+	}
+
 	return &StreamOperation{
 		OperationPlan:     plan,
 		context:           ctx,
@@ -57,6 +66,8 @@ func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFu
 
 		inputClient:  inputClient,
 		outputClient: outputClient,
+
+		watcher: shard_watcher.New(watcherInput),
 
 		readItemRateTracker:    NewRateTracker("Items", 9*time.Second),
 		wcuRateTracker:         NewRateTracker("WCUs", 9*time.Second),
@@ -129,19 +140,8 @@ func (o *StreamOperation) readStream() error {
 	log.Printf("%s: Streaming started…", o.OperationPlan.Description())
 	o.streamRead.Start()
 
-	watcherInput := &shard_watcher.RunInput{
-		Context:           o.context,
-		ContextCancelFunc: o.contextCancelFunc,
-
-		InputTableName:       o.OperationPlan.Input.TableName,
-		OperationDescription: o.OperationPlan.Description(),
-		StreamARN:            o.streamARN,
-		Client:               o.inputClient,
-
-		ShardProcessor: o.processShard,
-	}
-
-	o.watcher = shard_watcher.New(watcherInput)
+	o.watcher.StreamARN = o.streamARN
+	o.watcher.ShardProcessor = o.processShard
 
 	err := o.watcher.RunWorkers()
 	if err == nil {
