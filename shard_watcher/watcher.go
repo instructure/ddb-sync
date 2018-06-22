@@ -105,7 +105,7 @@ loop:
 	return finalErr
 }
 
-func (w *Watcher) Running() bool {
+func (w *Watcher) Started() bool {
 	return w != nil
 }
 

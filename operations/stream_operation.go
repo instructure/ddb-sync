@@ -104,18 +104,11 @@ func (o *StreamOperation) Run() error {
 }
 
 func (o *StreamOperation) Status() string {
-	if o.writing.Errored() || o.streamRead.Errored() {
-		return erroredMsg
+	if !o.watcher.Started() {
+		return pendingMsg
 	}
 
-	if !o.watcher.Running() {
-		return pendingMsg
-	} else if o.writing.Running() {
-		return fmt.Sprintf("%d written (%s latent)", o.writtenItemRateTracker.Count(), o.writeLatency.Status())
-	} else if o.writing.Complete() {
-		return completeMsg
-	}
-	return ""
+	return fmt.Sprintf("%d written (%s latent)", o.writtenItemRateTracker.Count(), o.writeLatency.Status())
 }
 
 // Checkpoint is a periodic status output meant for historical tracking.  This will be called when an update is desired.
