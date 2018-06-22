@@ -168,16 +168,14 @@ func (o *StreamOperation) processShard(shard *shard_tree.Shard) error {
 	}
 
 	iterator := shardIteratorOutput.ShardIterator
-
-	recordInput := &dynamodbstreams.GetRecordsInput{Limit: aws.Int64(1000), ShardIterator: iterator}
-	recordOutput, err := o.inputClient.GetRecordsWithContext(o.context, recordInput)
-
-	if err != nil {
-		return err
-	}
-
 	done := o.context.Done()
-	for recordOutput.NextShardIterator != nil && *recordOutput.NextShardIterator != "" {
+	for iterator != nil && *iterator != "" {
+		recordInput := &dynamodbstreams.GetRecordsInput{Limit: aws.Int64(1000), ShardIterator: iterator}
+		recordOutput, err := o.inputClient.GetRecordsWithContext(o.context, recordInput)
+		if err != nil {
+			return err
+		}
+
 		for _, record := range recordOutput.Records {
 			o.readItemRateTracker.Increment(1)
 			select {
@@ -187,13 +185,9 @@ func (o *StreamOperation) processShard(shard *shard_tree.Shard) error {
 			}
 		}
 
-		iterator := recordOutput.NextShardIterator
-		recordInput := &dynamodbstreams.GetRecordsInput{Limit: aws.Int64(1000), ShardIterator: iterator}
-		var err error
-		recordOutput, err = o.inputClient.GetRecordsWithContext(o.context, recordInput)
-		if err != nil {
-			return err
-		}
+		// TODO: backoff if we're not getting items
+		// (maybe only after receiving a number of empty responses?)
+		iterator = recordOutput.NextShardIterator
 	}
 	return nil
 }
