@@ -194,31 +194,45 @@ func (o *StreamOperation) processShard(shard *shard_tree.Shard) error {
 
 func (o *StreamOperation) writeRecords() error {
 	o.writing.Start()
-	for record := range o.c {
-		o.writeLatency.Update(*record.Dynamodb.ApproximateCreationDateTime)
-		if *record.EventName == "REMOVE" {
-			input := &dynamodb.DeleteItemInput{
-				Key:       record.Dynamodb.Keys,
-				TableName: aws.String(o.OperationPlan.Output.TableName),
-			}
-			resp, err := o.outputClient.DeleteItemWithContext(o.context, input)
-			if err != nil {
-				return err
-			}
 
-			o.markItemWritten(resp.ConsumedCapacity)
-		} else {
-			input := &dynamodb.PutItemInput{
-				Item: record.Dynamodb.NewImage,
-				ReturnConsumedCapacity: aws.String("TOTAL"),
-				TableName:              aws.String(o.OperationPlan.Output.TableName),
+	done := o.context.Done()
+channel:
+	for {
+		select {
+		case record, ok := <-o.c:
+			if !ok {
+				break channel
 			}
-			resp, err := o.outputClient.PutItemWithContext(o.context, input)
-			if err != nil {
-				return err
-			}
+			o.writeLatency.Update(*record.Dynamodb.ApproximateCreationDateTime)
+			if *record.EventName == "REMOVE" {
+				input := &dynamodb.DeleteItemInput{
+					Key: record.Dynamodb.Keys,
+					ReturnConsumedCapacity: aws.String("TOTAL"),
+					TableName:              aws.String(o.OperationPlan.Output.TableName),
+				}
+				resp, err := o.outputClient.DeleteItemWithContext(o.context, input)
+				if err != nil {
+					o.writing.Error()
+					return err
+				}
 
-			o.markItemWritten(resp.ConsumedCapacity)
+				o.markItemWritten(resp.ConsumedCapacity)
+			} else {
+				input := &dynamodb.PutItemInput{
+					Item: record.Dynamodb.NewImage,
+					ReturnConsumedCapacity: aws.String("TOTAL"),
+					TableName:              aws.String(o.OperationPlan.Output.TableName),
+				}
+				resp, err := o.outputClient.PutItemWithContext(o.context, input)
+				if err != nil {
+					o.writing.Error()
+					return err
+				}
+
+				o.markItemWritten(resp.ConsumedCapacity)
+			}
+		case <-done:
+			return o.context.Err()
 		}
 	}
 
