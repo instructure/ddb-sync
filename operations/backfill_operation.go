@@ -30,9 +30,9 @@ type BackfillOperation struct {
 	scanning Phase
 	writing  Phase
 
-	rcuRateTracker   *RateTracker
-	wcuRateTracker   *RateTracker
-	writeRateTracker *RateTracker
+	rcuRateTracker         *RateTracker
+	wcuRateTracker         *RateTracker
+	writtenItemRateTracker *RateTracker
 }
 
 func NewBackfillOperation(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*BackfillOperation, error) {
@@ -55,9 +55,9 @@ func NewBackfillOperation(ctx context.Context, plan config.OperationPlan, cancel
 		inputClient:  inputClient,
 		outputClient: outputClient,
 
-		rcuRateTracker:   NewRateTracker("RCUs", 9*time.Second),
-		wcuRateTracker:   NewRateTracker("WCUs", 9*time.Second),
-		writeRateTracker: NewRateTracker("Written Items", 9*time.Second),
+		rcuRateTracker:         NewRateTracker("RCUs", 9*time.Second),
+		wcuRateTracker:         NewRateTracker("WCUs", 9*time.Second),
+		writtenItemRateTracker: NewRateTracker("Written Items", 9*time.Second),
 	}, nil
 }
 
@@ -80,11 +80,11 @@ func (o *BackfillOperation) Preflights(_ *dynamodb.DescribeTableOutput, _ *dynam
 func (o *BackfillOperation) Run() error {
 	o.rcuRateTracker.Start()
 	o.wcuRateTracker.Start()
-	o.writeRateTracker.Start()
+	o.writtenItemRateTracker.Start()
 
 	defer o.rcuRateTracker.Stop()
 	defer o.wcuRateTracker.Stop()
-	defer o.writeRateTracker.Stop()
+	defer o.writtenItemRateTracker.Stop()
 
 	collator := ErrorCollator{
 		Cancel: o.contextCancelFunc,
@@ -100,9 +100,8 @@ func (o *BackfillOperation) Status() string {
 		return completeMsg
 	} else if o.errored() {
 		return erroredMsg
-	} else {
-		return fmt.Sprintf("%d written", o.writeRateTracker.Count())
 	}
+	return fmt.Sprintf("%d written", o.writtenItemRateTracker.Count())
 }
 
 func (o *BackfillOperation) Rate() string {
@@ -116,7 +115,7 @@ func (o *BackfillOperation) Rate() string {
 // Checkpoint prints a logging statement summarizing the current state.  Meant for periodic update requests.
 func (o *BackfillOperation) Checkpoint() string {
 	if o.writing.Running() {
-		return fmt.Sprintf("%s Backfill in progress: %d items written over %s", o.OperationPlan.Description(), o.writeRateTracker.Count(), o.writeRateTracker.Duration().String())
+		return fmt.Sprintf("%s Backfill in progress: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), o.writtenItemRateTracker.Duration().String())
 	}
 	if o.writing.Complete() {
 		return o.checkpointComplete()
@@ -125,7 +124,8 @@ func (o *BackfillOperation) Checkpoint() string {
 }
 
 func (o *BackfillOperation) checkpointComplete() string {
-	return fmt.Sprintf("%s Backfill complete: %d items written over %s", o.OperationPlan.Description(), o.writeRateTracker.Count(), o.writeRateTracker.Duration().String())
+	// TODO: make this log
+	return fmt.Sprintf("%s Backfill complete: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), o.writtenItemRateTracker.Duration().String())
 }
 
 func (o *BackfillOperation) scan() error {
@@ -260,13 +260,13 @@ func (o *BackfillOperation) sendBatch(batch map[string][]*dynamodb.WriteRequest)
 	// self-reinvoking
 	if len(result.UnprocessedItems) > 0 && len(result.UnprocessedItems[o.OperationPlan.Output.TableName]) > 0 {
 		writeCount := batchLength - len(result.UnprocessedItems[o.OperationPlan.Output.TableName])
-		o.writeRateTracker.Increment(int64(writeCount))
+		o.writtenItemRateTracker.Increment(int64(writeCount))
 		o.UpdateConsumedCapacity(result.ConsumedCapacity)
 		return o.sendBatch(result.UnprocessedItems)
 	}
 
 	o.UpdateConsumedCapacity(result.ConsumedCapacity)
-	o.writeRateTracker.Increment(int64(batchLength))
+	o.writtenItemRateTracker.Increment(int64(batchLength))
 
 	return nil
 }

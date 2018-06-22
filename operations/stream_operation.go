@@ -35,9 +35,9 @@ type StreamOperation struct {
 
 	watcher *shard_watcher.Watcher
 
-	ingestRateTracker *RateTracker
-	wcuRateTracker    *RateTracker
-	writeRateTracker  *RateTracker
+	readItemRateTracker    *RateTracker
+	wcuRateTracker         *RateTracker
+	writtenItemRateTracker *RateTracker
 }
 
 func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFunc context.CancelFunc) (*StreamOperation, error) {
@@ -61,9 +61,9 @@ func NewStreamOperation(ctx context.Context, plan config.OperationPlan, cancelFu
 		inputDescribeTableClient: inputDescribeTableClient,
 		outputClient:             outputClient,
 
-		ingestRateTracker: NewRateTracker("Items", 9*time.Second),
-		wcuRateTracker:    NewRateTracker("WCUs", 9*time.Second),
-		writeRateTracker:  NewRateTracker("Items", 9*time.Second),
+		readItemRateTracker:    NewRateTracker("Items", 9*time.Second),
+		wcuRateTracker:         NewRateTracker("WCUs", 9*time.Second),
+		writtenItemRateTracker: NewRateTracker("Items", 9*time.Second),
 	}, nil
 }
 
@@ -79,17 +79,20 @@ func (o *StreamOperation) Preflights(in *dynamodb.DescribeTableOutput, _ *dynamo
 	if !(*streamSpecification.StreamViewType == dynamodb.StreamViewTypeNewImage || *streamSpecification.StreamViewType == dynamodb.StreamViewTypeNewAndOldImages) {
 		return fmt.Errorf("[%s] Fails pre-flight check: stream is not a correct type 'NEW_IMAGE' or 'NEW_AND_OLD_IMAGES'", *in.Table.TableName)
 	}
+
+	o.streamARN = *in.Table.LatestStreamArn
+
 	return nil
 }
 
 func (o *StreamOperation) Run() error {
-	o.ingestRateTracker.Start()
+	o.readItemRateTracker.Start()
 	o.wcuRateTracker.Start()
-	o.writeRateTracker.Start()
+	o.writtenItemRateTracker.Start()
 
-	defer o.ingestRateTracker.Stop()
+	defer o.readItemRateTracker.Stop()
 	defer o.wcuRateTracker.Stop()
-	defer o.writeRateTracker.Stop()
+	defer o.writtenItemRateTracker.Stop()
 
 	collator := ErrorCollator{
 		Cancel: o.contextCancelFunc,
@@ -108,7 +111,7 @@ func (o *StreamOperation) Status() string {
 	if !o.watcher.Running() {
 		return pendingMsg
 	} else if o.writing.Running() {
-		return fmt.Sprintf("%d written (%s latent)", o.writeRateTracker.Count(), o.writeLatency.Status())
+		return fmt.Sprintf("%d written (%s latent)", o.writtenItemRateTracker.Count(), o.writeLatency.Status())
 	} else if o.writing.Complete() {
 		return completeMsg
 	}
@@ -118,10 +121,7 @@ func (o *StreamOperation) Status() string {
 // Checkpoint is a periodic status output meant for historical tracking.  This will be called when an update is desired.
 func (o *StreamOperation) Checkpoint() string {
 	if o.writing.Running() {
-		return fmt.Sprintf("%s Streaming: %d items written over %s", o.OperationPlan.Description(), o.writeRateTracker.Count(), o.writeRateTracker.Duration().String())
-	}
-	if o.writing.Complete() {
-		return o.checkpointComplete()
+		return fmt.Sprintf("%s Streaming: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), o.writtenItemRateTracker.Duration().String())
 	}
 	return ""
 }
@@ -129,13 +129,9 @@ func (o *StreamOperation) Checkpoint() string {
 func (o *StreamOperation) Rate() string {
 	if o.writing.Running() {
 		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
-		return fmt.Sprintf("%s %s %s", o.ingestRateTracker.RatePerSecond(), status.BufferStatus(buffer), o.wcuRateTracker.RatePerSecond())
+		return fmt.Sprintf("%s %s %s", o.readItemRateTracker.RatePerSecond(), status.BufferStatus(buffer), o.wcuRateTracker.RatePerSecond())
 	}
 	return ""
-}
-
-func (o *StreamOperation) checkpointComplete() string {
-	return fmt.Sprintf("%s Stream closed: %d items written over %s", o.OperationPlan.Description(), o.writeRateTracker.Count(), o.writeRateTracker.Duration().String())
 }
 
 func (o *StreamOperation) readStream() error {
@@ -164,7 +160,7 @@ func (o *StreamOperation) readStream() error {
 
 	err = o.watcher.RunWorkers()
 	if err == nil {
-		o.checkpointComplete()
+		log.Printf("%s Stream closed: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), o.writtenItemRateTracker.Duration().String())
 		o.streamRead.Finish()
 	} else {
 		o.streamRead.Error()
@@ -198,8 +194,7 @@ func (o *StreamOperation) processShard(shard *shard_tree.Shard) error {
 	done := o.context.Done()
 	for recordOutput.NextShardIterator != nil && *recordOutput.NextShardIterator != "" {
 		for _, record := range recordOutput.Records {
-			atomic.AddInt64(&o.receivedCount, 1)
-			o.ingestRateTracker.Increment(1)
+			o.readItemRateTracker.Increment(1)
 			select {
 			case o.c <- *record:
 			case <-done:
@@ -278,6 +273,6 @@ func (o *StreamOperation) BufferCapacity() int {
 }
 
 func (o *StreamOperation) markItemWritten(cap *dynamodb.ConsumedCapacity) {
-	o.writeRateTracker.Increment(1)
+	o.writtenItemRateTracker.Increment(1)
 	o.wcuRateTracker.Increment(int64(*cap.CapacityUnits))
 }
