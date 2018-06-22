@@ -106,7 +106,7 @@ func (o *BackfillOperation) Status() string {
 
 func (o *BackfillOperation) Rate() string {
 	if o.writing.Running() {
-		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
+		buffer := float64(o.bufferFill()) / float64(o.bufferCapacity())
 		return fmt.Sprintf("%s %s %s", o.rcuRateTracker.RatePerSecond(), status.BufferStatus(buffer), o.wcuRateTracker.RatePerSecond())
 	}
 	return ""
@@ -280,11 +280,11 @@ func (o *BackfillOperation) UpdateConsumedCapacity(capacities []*dynamodb.Consum
 	o.wcuRateTracker.Increment(int64(math.Ceil(agg)))
 }
 
-func (o *BackfillOperation) BufferFill() int {
+func (o *BackfillOperation) bufferFill() int {
 	return len(o.c)
 }
 
-func (o *BackfillOperation) BufferCapacity() int {
+func (o *BackfillOperation) bufferCapacity() int {
 	return cap(o.c)
 }
 

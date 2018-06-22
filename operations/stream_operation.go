@@ -121,7 +121,7 @@ func (o *StreamOperation) Checkpoint() string {
 
 func (o *StreamOperation) Rate() string {
 	if o.writing.Running() {
-		buffer := float64(o.BufferFill()) / float64(o.BufferCapacity())
+		buffer := float64(o.bufferFill()) / float64(o.bufferCapacity())
 		return fmt.Sprintf("%s %s %s", o.readItemRateTracker.RatePerSecond(), status.BufferStatus(buffer), o.wcuRateTracker.RatePerSecond())
 	}
 	return ""
@@ -257,11 +257,11 @@ func (o *StreamOperation) writeRecords() error {
 	return nil
 }
 
-func (o *StreamOperation) BufferFill() int {
+func (o *StreamOperation) bufferFill() int {
 	return len(o.c)
 }
 
-func (o *StreamOperation) BufferCapacity() int {
+func (o *StreamOperation) bufferCapacity() int {
 	return cap(o.c)
 }
 
