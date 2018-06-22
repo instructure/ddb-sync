@@ -6,7 +6,6 @@ import (
 	"math"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"gerrit.instructure.com/ddb-sync/config"
@@ -30,9 +29,6 @@ type BackfillOperation struct {
 
 	scanning Phase
 	writing  Phase
-
-	approximateItemCount      int64
-	approximateTableSizeBytes int64
 
 	rcuRateTracker   *RateTracker
 	wcuRateTracker   *RateTracker
@@ -282,14 +278,6 @@ func (o *BackfillOperation) UpdateConsumedCapacity(capacities []*dynamodb.Consum
 	}
 
 	o.wcuRateTracker.Increment(int64(math.Ceil(agg)))
-}
-
-func (o *BackfillOperation) ApproximateItemCount() int64 {
-	return atomic.LoadInt64(&o.approximateItemCount)
-}
-
-func (o *BackfillOperation) ApproximateTableSizeBytes() int64 {
-	return atomic.LoadInt64(&o.approximateTableSizeBytes)
 }
 
 func (o *BackfillOperation) BufferFill() int {

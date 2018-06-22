@@ -3,7 +3,6 @@ package operations
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
 	"time"
 
 	"gerrit.instructure.com/ddb-sync/config"
@@ -25,8 +24,6 @@ type StreamOperation struct {
 	inputDescribeTableClient *dynamodb.DynamoDB
 	inputClient              *dynamodbstreams.DynamoDBStreams
 	outputClient             *dynamodb.DynamoDB
-
-	receivedCount int64
 
 	writeLatency LatencyLock
 
@@ -278,10 +275,6 @@ func (o *StreamOperation) BufferFill() int {
 
 func (o *StreamOperation) BufferCapacity() int {
 	return cap(o.c)
-}
-
-func (o *StreamOperation) ReceivedCount() int64 {
-	return atomic.LoadInt64(&o.receivedCount)
 }
 
 func (o *StreamOperation) markItemWritten(cap *dynamodb.ConsumedCapacity) {
