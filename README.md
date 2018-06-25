@@ -43,7 +43,7 @@ ddb-sync is a tool used for syncing data from a set of source tables to a set of
 
 ### Quickstart
 
-`go install gerrit.instructure.com/ddb-sync` and `ddb-sync --help` for usage
+`go get gerrit.instructure.com/ddb-sync` and `ddb-sync --help` for usage
 
 ### Functionality
 
@@ -63,9 +63,9 @@ ddb-sync does not verify source and destination tables consistency and an outsid
 - Table synchronizations
 
 ### Similar tools
-- dynamodb-table-sync
-- copy-dynamodb-table
-- dynamodb-replicator
+- [dynamodb-table-sync](https://www.npmjs.com/package/dynamodb-table-sync)
+- [copy-dynamodb-table](https://www.npmjs.com/package/copy-dynamodb-table)
+- [dynamodb-replicator](https://www.npmjs.com/package/dynamo-replicator)
 
 ## Usage
 
@@ -76,7 +76,7 @@ ddb-sync is a golang binary.
 Ensure you have a proper Go environment setup and then:
 
 ```command
-go install gerrit.instructure.com/ddb-sync
+go get gerrit.instructure.com/ddb-sync
 ```
 
 #### Tuning
@@ -147,8 +147,8 @@ The IAM permissions required by the roles the application uses to read and put d
 
 | Table             | Backfill Permissions                                         | Stream Permissions                                           |
 | ----------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| Source Table      | dynamodb:BatchGetItem<br />dynamodb:DescribeTable<br />dynamodb:GetItem<br />dynamodb:GetRecords<br />dynamodb:Scan | dynamodb:DescribeTable<br />dynamodb:DescribeStream<br />dynamodb:ListStreams<br />dynamodb:GetShardIterator<br />dynamodb:GetRecords |
-| Destination Table | dynamodb:BatchWriteItem                                      | dynamodb:PutItem<br />dynamodb:UpdateItem<br />dynamodb:DeleteItem |
+| **Source Table**      | dynamodb:DescribeTable<br />dynamodb:Scan | dynamodb:DescribeStream<br />dynamodb:DescribeTable<br />dynamodb:GetRecords<br />dynamodb:GetShardIterator |
+| **Destination Table** | dynamodb:BatchWriteItem | dynamodb:DeleteItem<br />dynamodb:PutItem |
 
 #### Configuration By CLI
 
@@ -175,7 +175,7 @@ The input and output table must differ by either name, region, or have a role ar
 
 #### Configuration By File
 
-ddb-sync configuration file format is YAML. It describes a plan object which has an array of maps of input and output tables, their table name, region and the role ARN to access it with the appropriate permissions listed above.
+The ddb-sync configuration file format is YAML. It describes a plan object which has an array of objects of input and output tables, their table name, region and the role ARN to access it with the appropriate permissions listed above.
 
 An example is below.
 
