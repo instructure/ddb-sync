@@ -67,7 +67,7 @@ func (s *Set) Display() []string {
 		Cells:   s.statusRows(),
 	}
 
-	return append([]string{s.Delimiter()}, renderer.Render(&table)...)
+	return append([]string{"", s.Delimiter()}, renderer.Render(&table)...)
 }
 
 func (s *Set) statusRows() [][]string {

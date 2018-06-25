@@ -10,6 +10,7 @@ import (
 	"gerrit.instructure.com/ddb-sync/shard_tree"
 	"gerrit.instructure.com/ddb-sync/shard_watcher"
 	"gerrit.instructure.com/ddb-sync/status"
+	"gerrit.instructure.com/ddb-sync/utils"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -130,7 +131,7 @@ func (o *StreamOperation) Status() string {
 // Checkpoint is a periodic status output meant for historical tracking.  This will be called when an update is desired.
 func (o *StreamOperation) Checkpoint() string {
 	if o.writing.Running() {
-		return fmt.Sprintf("%s: Streaming: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), o.writtenItemRateTracker.Duration().String())
+		return fmt.Sprintf("%s: Streaming: %d items written over %s", o.OperationPlan.Description(), o.writtenItemRateTracker.Count(), utils.FormatDuration(o.writtenItemRateTracker.Duration()))
 	}
 	return ""
 }

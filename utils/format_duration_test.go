@@ -1,10 +1,10 @@
-package operations_test
+package utils_test
 
 import (
 	"testing"
 	"time"
 
-	"gerrit.instructure.com/ddb-sync/operations"
+	"gerrit.instructure.com/ddb-sync/utils"
 )
 
 type formatDurationTestCase struct {
@@ -13,7 +13,6 @@ type formatDurationTestCase struct {
 }
 
 func TestFormatDuration(t *testing.T) {
-	tester := operations.LatencyLock{}
 	testCases := []formatDurationTestCase{
 		formatDurationTestCase{
 			duration: time.Nanosecond + time.Second,
@@ -42,7 +41,7 @@ func TestFormatDuration(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		result := tester.FormatDuration(testCase.duration)
+		result := utils.FormatDuration(testCase.duration)
 		if testCase.expected != result {
 			t.Errorf("%q didn't match the expected output: %q", result, testCase.expected)
 		}

@@ -11,6 +11,7 @@ import (
 	"gerrit.instructure.com/ddb-sync/config"
 	"gerrit.instructure.com/ddb-sync/log"
 	"gerrit.instructure.com/ddb-sync/status"
+	"gerrit.instructure.com/ddb-sync/utils"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -163,7 +164,7 @@ func (o *BackfillOperation) scan() error {
 		return o.context.Err()
 
 	default:
-		log.Printf("%s: Backfill: scan complete %d items read over %s", o.OperationPlan.Description(), o.readItemRateTracker.Count(), o.readItemRateTracker.Duration().String())
+		log.Printf("%s: Backfill: scan complete %d items read over %s", o.OperationPlan.Description(), o.readItemRateTracker.Count(), utils.FormatDuration(o.readItemRateTracker.Duration()))
 		o.scanning.Finish()
 		return nil
 	}

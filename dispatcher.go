@@ -11,6 +11,11 @@ import (
 	"gerrit.instructure.com/ddb-sync/status"
 )
 
+const (
+	checkpointHeader = "================= Progress Update =================="
+	checkpointFooter = "===================================================="
+)
+
 type Dispatcher struct {
 	Operators   []*operations.Operator
 	operatorsWG sync.WaitGroup
@@ -75,13 +80,14 @@ func (d *Dispatcher) Run() error {
 }
 
 func (d *Dispatcher) Checkpoint() {
-	checkpoints := []string{"Checkpoint ↓↓↓↓↓↓↓↓↓"}
+	checkpoints := []string{"", checkpointHeader}
 	for _, operator := range d.Operators {
 		adtl := operator.Checkpoint()
 		if len(adtl) > 0 {
 			checkpoints = append(checkpoints, operator.Checkpoint())
 		}
 	}
+	checkpoints = append(checkpoints, checkpointFooter)
 	log.Printf(strings.Join(checkpoints, "\n"))
 }
 

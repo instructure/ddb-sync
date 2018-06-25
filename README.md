@@ -99,23 +99,27 @@ For instance, `ddb-sync --config-file <config_file.yml> 1>ddb-sync-log.out` woul
 
 #### Logging
 
-The log will display each operation on a table, relevant status to the operation and when a checkpoint has occurred. The format is below.
-
-`timestamp [src-table] => [dest-table] Log statement`
-
-ddb-sync logs (with a timestamp prefix) on starts, completions and shard transitions in the stream. An example is below.
-
-
-`2018/06/19 11:05:27 [ddb-sync-source] ⇨ [ddb-sync-dest] Backfill complete. 14k items written.`
-
-Additionally, occasionally the tool will add checkpoints to the log for historical convenience, see below for an example.
+The log will display each operation on a table, relevant status to the operation. The format is below.
 
 ```console
-2018/06/19 11:35:35 Checkpoint: ↓↓↓↓
-[ddb-sync-source] ⇨ [ddb-sync-dest]: Streaming: ~1k items written over 1m1s
-[ddb-sync-source-2] ⇨ [ddb-sync-dest-2]: Backfill in progress: 822 items written over 1m1s
+timestamp [src-table] => [dest-table]: Log statement
 ```
 
+ddb-sync logs (with a timestamp prefix) on starting or completing actions as well as shard transitions in the stream. An example is below.
+
+```console
+2018/06/19 11:05:27 [ddb-sync-source] ⇨ [ddb-sync-dest]: Backfill complete. 14301 items written over 5m9s
+```
+
+ddb-sync will add progress updates every 20 minutes to the log for historical convenience, e.g.:
+
+```console
+2018/06/19 11:12:26
+================= Progress Update ==================
+[ddb-sync-source] ⇨ [ddb-sync-dest]: Streaming: 400 items written over 20m1s
+[ddb-sync-source-2] ⇨ [ddb-sync-dest-2]: Backfill in progress: 822 items written over 1m1s
+====================================================
+```
 
 #### Status Messaging
 
@@ -124,6 +128,7 @@ The bottom portion of the output given to the user is the status messaging. It d
 An example follows:
 
 ```
+------------------------------------------------ Current Status ---------------------------------------------------
 TABLE                    DETAILS              BACKFILL        STREAM                         RATES & BUFFER
 ⇨ ddb-sync-dest         47K items (29MiB)    -COMPLETE-      2019 written (~18h57m latent)  12 items/s ⇨ ◕ ⇨ 32 WCU/s
 ⇨ ddb-sync-dest-2       ~46K items (~26MiB)  -SKIPPED-       789 written (~46m35s latent)   9  items/s ⇨ ◕ ⇨ 17 WCU/s
