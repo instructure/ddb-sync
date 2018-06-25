@@ -10,18 +10,25 @@ import (
 )
 
 var (
-	logger          = log.New(os.Stdout, "", log.LstdFlags)
-	statusLineCount = 0
-	statusSet       = status.NewBlankSet()
+	stdErrInteractive = false
+	logger            = log.New(os.Stdout, "", log.LstdFlags)
+	statusLineCount   = 0
+	statusSet         = status.NewBlankSet()
 
 	statusLock sync.Mutex
 )
 
-const (
-	errorStatusLineCount   = 3
-	minimumViewportWidth   = 80
-	statusSquelchLenBuffer = 17
-)
+func InteractiveMode() bool {
+	fi, err := os.Stderr.Stat()
+	if err == nil {
+		if fi.Mode()&os.ModeCharDevice == os.ModeCharDevice {
+			stdErrInteractive = true
+			return true
+		}
+	}
+	stdErrInteractive = false
+	return false
+}
 
 // ANSI helpers
 
@@ -49,20 +56,28 @@ func ClearStatus() {
 }
 
 func hideStatus() {
-	MoveToColumn(1)
-	EraseLineAfterCursor()
-	for i := 0; i < statusLineCount; i++ {
-		MoveCursorUp(1)
+	if stdErrInteractive {
 		MoveToColumn(1)
 		EraseLineAfterCursor()
+		for i := 0; i < statusLineCount; i++ {
+			MoveCursorUp(1)
+			MoveToColumn(1)
+			EraseLineAfterCursor()
+		}
 	}
 }
 
 func showStatus() {
-	lines := statusSet.Display()
-	statusLineCount = len(lines)
-	for _, line := range statusSet.Display() {
-		fmt.Fprintln(os.Stderr, line)
+	if stdErrInteractive {
+		lines := statusSet.Display()
+		statusLineCount = len(lines)
+		for _, line := range statusSet.Display() {
+			fmt.Fprintln(os.Stderr, line)
+		}
+	} else {
+		for _, line := range statusSet.ToFile() {
+			fmt.Fprintln(os.Stderr, line)
+		}
 	}
 }
 
@@ -82,8 +97,10 @@ func Print(v ...interface{}) {
 	statusLock.Lock()
 	defer statusLock.Unlock()
 
-	hideStatus()
-	defer showStatus()
+	if stdErrInteractive {
+		hideStatus()
+		defer showStatus()
+	}
 	logger.Print(v...)
 }
 
@@ -91,8 +108,10 @@ func Printf(format string, v ...interface{}) {
 	statusLock.Lock()
 	defer statusLock.Unlock()
 
-	hideStatus()
-	defer showStatus()
+	if stdErrInteractive {
+		hideStatus()
+		defer showStatus()
+	}
 	logger.Printf(format, v...)
 }
 
@@ -100,7 +119,9 @@ func Println(v ...interface{}) {
 	statusLock.Lock()
 	defer statusLock.Unlock()
 
-	hideStatus()
-	defer showStatus()
+	if stdErrInteractive {
+		hideStatus()
+		defer showStatus()
+	}
 	logger.Println(v...)
 }

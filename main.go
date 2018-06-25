@@ -11,8 +11,15 @@ import (
 	"gerrit.instructure.com/ddb-sync/operations"
 )
 
-const displayTickerTime = 500 * time.Millisecond
+var displayTickerTime = 15 * time.Second
+
 const checkpointTickerTime = 20 * time.Minute
+
+func init() {
+	if log.InteractiveMode() {
+		displayTickerTime = 500 * time.Millisecond
+	}
+}
 
 var StopSignals = []os.Signal{
 	os.Interrupt,

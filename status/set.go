@@ -3,6 +3,7 @@ package status
 import (
 	"os"
 	"strings"
+	"time"
 
 	"gerrit.instructure.com/ddb-sync/tty_table"
 
@@ -68,6 +69,16 @@ func (s *Set) Display() []string {
 	}
 
 	return append([]string{"", s.Delimiter()}, renderer.Render(&table)...)
+}
+
+func (s *Set) ToFile() []string {
+	renderer.MaxWidth = 200
+	table := tty_table.Table{
+		Headers: s.Header(),
+		Cells:   s.statusRows(),
+	}
+
+	return append([]string{"", time.Now().Format("2006-01-02 15:04:05")}, renderer.Render(&table)...)
 }
 
 func (s *Set) statusRows() [][]string {
