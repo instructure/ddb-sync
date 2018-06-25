@@ -30,11 +30,7 @@ func (c *ErrorCollator) Run() error {
 	var finalError error
 	for range c.Funcs {
 		err := <-errs
-		if awsErr, ok := err.(awserr.Error); ok {
-			if awsErr.Code() == "RequestCanceled" {
-				err = context.Canceled
-			}
-		}
+		err = RequestCanceledCheck(err)
 
 		switch err {
 		case nil:
@@ -56,4 +52,14 @@ func (c *ErrorCollator) Run() error {
 	}
 
 	return finalError
+}
+
+func RequestCanceledCheck(err error) error {
+	if awsErr, ok := err.(awserr.Error); ok {
+		if awsErr.Code() == "RequestCanceled" {
+			return context.Canceled
+		}
+	}
+
+	return err
 }

@@ -148,9 +148,14 @@ func (o *BackfillOperation) scan() error {
 	}
 
 	err := o.inputClient.ScanPagesWithContext(o.context, input, scanHandler)
+
 	if err != nil {
-		o.scanning.Error()
-		return fmt.Errorf("%s: Backfill failed: (Scan) %v", o.OperationPlan.Description(), err)
+		err = RequestCanceledCheck(err)
+		if err != context.Canceled {
+			o.scanning.Error()
+			err = fmt.Errorf("%s: Backfill failed: (Scan) %v", o.OperationPlan.Description(), err)
+		}
+		return err
 	}
 
 	select {

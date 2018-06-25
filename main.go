@@ -57,12 +57,15 @@ func main() {
 	case nil:
 	case context.Canceled:
 		log.Print("[USER CANCELED]\n")
+		fmt.Fprintf(os.Stderr, "[USER CANCELED]\n")
 		os.Exit(130)
 	case operations.ErrOperationFailed:
 		log.Print("[OPERATION FAILED]\n")
+		fmt.Fprintf(os.Stderr, "[OPERATION FAILED]\n")
 		os.Exit(79)
 	default:
 		log.Printf("[ERROR] %v\n", err)
+		fmt.Fprintf(os.Stderr, "[ERROR] %v\n", err)
 		os.Exit(79)
 	}
 }
