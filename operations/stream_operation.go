@@ -16,6 +16,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodbstreams"
 )
 
+const (
+	// In testing, this is sufficient to move to on from a blank shard
+	// without backing off prematurely
+	blankCountThreshold = 5
+
+	backoffDuration = 3 * time.Second
+)
+
 type StreamOperation struct {
 	OperationPlan     config.OperationPlan
 	context           context.Context
@@ -168,11 +176,28 @@ func (o *StreamOperation) processShard(shard *shard_tree.Shard) error {
 
 	iterator := shardIteratorOutput.ShardIterator
 	done := o.context.Done()
+	var blankCounter uint
+
 	for iterator != nil && *iterator != "" {
 		recordInput := &dynamodbstreams.GetRecordsInput{Limit: aws.Int64(1000), ShardIterator: iterator}
 		recordOutput, err := o.inputClient.GetRecordsWithContext(o.context, recordInput)
 		if err != nil {
 			return err
+		}
+
+		if len(recordOutput.Records) > 0 {
+			blankCounter++
+		} else {
+			blankCounter = 0
+		}
+
+		if blankCounter > blankCountThreshold {
+			slpCh := time.After(backoffDuration)
+			select {
+			case <-slpCh:
+			case <-done:
+				return o.context.Err()
+			}
 		}
 
 		for _, record := range recordOutput.Records {
@@ -184,8 +209,6 @@ func (o *StreamOperation) processShard(shard *shard_tree.Shard) error {
 			}
 		}
 
-		// TODO: backoff if we're not getting items
-		// (maybe only after receiving a number of empty responses?)
 		iterator = recordOutput.NextShardIterator
 	}
 	return nil
