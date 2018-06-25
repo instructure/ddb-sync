@@ -4,6 +4,6 @@ const (
 	erroredMsg  = "-ERRORED-"
 	completeMsg = "-COMPLETE-"
 	pendingMsg  = "-PENDING-"
-
-	recordChanBuffer = 4000
 )
+
+const recordChanBuffer = 4000
