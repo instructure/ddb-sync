@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 
 	"gerrit.instructure.com/ddb-sync/config"
@@ -97,6 +98,10 @@ func (o *Operator) Preflights() error {
 	outDescr, err := o.getTableDescription(outputClient, o.OperationPlan.Output.TableName)
 	if err != nil {
 		return err
+	}
+
+	if !reflect.DeepEqual(inDescr.Table.KeySchema, outDescr.Table.KeySchema) {
+		return fmt.Errorf("[ERROR] %s: table key schemas do not match", o.OperationPlan.Description())
 	}
 
 	if o.backfill != nil {
