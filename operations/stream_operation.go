@@ -221,6 +221,8 @@ func (o *StreamOperation) writeRecords() error {
 	done := o.context.Done()
 channel:
 	for {
+		var consumedCap *dynamodb.ConsumedCapacity
+		var err error
 		select {
 		case record, ok := <-o.c:
 			if !ok {
@@ -233,30 +235,30 @@ channel:
 					ReturnConsumedCapacity: aws.String("TOTAL"),
 					TableName:              aws.String(o.OperationPlan.Output.TableName),
 				}
-				resp, err := o.outputClient.DeleteItemWithContext(o.context, input)
-				if err != nil {
-					o.writing.Error()
-					return err
-				}
-
-				o.markItemWritten(resp.ConsumedCapacity)
+				var resp *dynamodb.DeleteItemOutput
+				resp, err = o.outputClient.DeleteItemWithContext(o.context, input)
+				consumedCap = resp.ConsumedCapacity
 			} else {
 				input := &dynamodb.PutItemInput{
 					Item: record.Dynamodb.NewImage,
 					ReturnConsumedCapacity: aws.String("TOTAL"),
 					TableName:              aws.String(o.OperationPlan.Output.TableName),
 				}
-				resp, err := o.outputClient.PutItemWithContext(o.context, input)
-				if err != nil {
-					o.writing.Error()
-					return err
-				}
+				var resp *dynamodb.PutItemOutput
+				resp, err = o.outputClient.PutItemWithContext(o.context, input)
+				consumedCap = resp.ConsumedCapacity
 
-				o.markItemWritten(resp.ConsumedCapacity)
 			}
 		case <-done:
 			return o.context.Err()
 		}
+
+		if err != nil {
+			o.writing.Error()
+			return fmt.Errorf("%s: Stream Failed (writeRecords): %v\n", o.OperationPlan.Description(), err)
+		}
+
+		o.markItemWritten(consumedCap)
 	}
 
 	o.writing.Finish()
