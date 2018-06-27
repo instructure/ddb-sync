@@ -32,16 +32,19 @@ func main() {
 			fmt.Printf("[ERROR] %v\n", err)
 		}
 		os.Exit(1)
+		return
 	}
 
 	dispatcher, err := NewDispatcher(plan)
 	if err != nil {
 		os.Exit(2)
+		return
 	}
 
 	err = dispatcher.Preflights()
 	if err != nil {
 		os.Exit(2)
+		return
 	}
 
 	displayStatus(dispatcher)

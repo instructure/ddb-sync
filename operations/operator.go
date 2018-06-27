@@ -14,10 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
-// preflightRetries is set to less than defaults because it causes preflights when
-// unauthenticated to take a very long time to fail
-const preflightRetries = 7
-
 var ErrOperationFailed = errors.New("Operation failed")
 
 type operatorPhase int
@@ -90,8 +86,8 @@ func (o *Operator) Preflights() error {
 		return err
 	}
 
-	inputClient := dynamodb.New(inputSession.Copy(aws.NewConfig().WithMaxRetries(preflightRetries)))
-	outputClient := dynamodb.New(outputSession.Copy(aws.NewConfig().WithMaxRetries(preflightRetries)))
+	inputClient := dynamodb.New(inputSession)
+	outputClient := dynamodb.New(outputSession)
 
 	inDescr, err := o.getTableDescription(inputClient, o.OperationPlan.Input.TableName)
 	if err != nil {

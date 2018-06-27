@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -33,14 +34,14 @@ func NewDispatcher(plans []config.OperationPlan) (*Dispatcher, error) {
 		plan = plan.WithDefaults()
 		err := plan.Validate()
 		if err != nil {
-			log.Printf("[ERROR] %v\n", err)
+			fmt.Printf("[ERROR] %v\n", err)
 			finalErr = err
 			continue
 		}
 
 		operator, err := operations.NewOperator(ctx, plan, cancel)
 		if err != nil {
-			log.Printf("[ERROR] %v\n", err)
+			fmt.Printf("[ERROR] %v\n", err)
 			finalErr = err
 			continue
 		}
@@ -55,11 +56,18 @@ func NewDispatcher(plans []config.OperationPlan) (*Dispatcher, error) {
 }
 
 func (d *Dispatcher) Preflights() error {
+	err := quickCheckForActiveCredentials(d.ctx)
+	if err != nil {
+		fmt.Println("[ERROR] No valid credentials found")
+		return err
+	}
+
 	var finalErr error
+
 	for _, operator := range d.Operators {
 		err := operator.Preflights()
 		if err != nil {
-			log.Printf("[ERROR] %v\n", err)
+			fmt.Printf("[ERROR] %v\n", err)
 			finalErr = err
 		}
 	}
