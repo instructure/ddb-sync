@@ -16,21 +16,19 @@
 
   - [Installation](#installation)
 
-  - [Configuration methods](#configuration-methods)
+  - [Permission Prerequisites](#permission-prerequisites)
+
+  - [Configuration](#configuration)
+
+    - [Tuning](#tuning)
+
+  - [Invocation](#invocation)
 
   - [Output](#output)
 
     - [Logging](#logging)
 
     - [Status Messaging](#status-messaging)
-
-  - [Invocation](#invocation)
-
-    - [Permission Prerequisites](#permission-prerequisites)
-
-    - [Configuration By File](#configuration-by-file)
-
-    - [Configuration By CLI](#configuration-by-cli)
 
 - [Development and Testing tools](#development-and-testing-tools)
 
@@ -79,17 +77,76 @@ Ensure you have a proper Go environment setup and then:
 go get gerrit.instructure.com/ddb-sync
 ```
 
+### Permission Prerequisites
+
+The IAM permissions required by the roles the application uses to read and put data to the destination tables is listed as follows for each phase.
+
+| Table             | Backfill Permissions                                         | Stream Permissions                                           |
+| ----------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| **Source Table**      | dynamodb:DescribeTable<br />dynamodb:Scan | dynamodb:DescribeStream<br />dynamodb:DescribeTable<br />dynamodb:GetRecords<br />dynamodb:GetShardIterator |
+| **Destination Table** | dynamodb:BatchWriteItem | dynamodb:DeleteItem<br />dynamodb:PutItem |
+
+### Configuration
+
+ddb-sync is probably most useful when used with a config file. You can use a config file to run many concurrent operations together. Alternatively, you can provide a single set operation as flags to the CLI. Either a config file or a combination of input and output options are required. In addition if using the flags the input and output table must differ by either name, region, or have a role arn provided.
+
+The ddb-sync configuration file format is YAML. It describes a plan object which has an array of objects of input and output tables, their table name, region and the role ARN to access it with the appropriate permissions listed above.
+
+An example is below.
+
+```yaml
+---
+plan:
+  - input:
+      table: ddb-sync-source
+      region: us-west-2
+      role_arn: arn:aws:iam::<account_num>:role/ddb-sync-READ_ONLY_SOURCE
+    output:
+      table: ddb-sync-dest
+      region: us-east-2
+      role_arn: arn:aws:iam::<account_num>:role/ddb-sync_WRITE_ONLY_DEST
+    stream:
+      disabled: true
+    backfill:
+      disabled: false
+  - input:
+      table: ddb-sync-source-2
+      region: us-west-2
+      role_arn: arn:aws:iam::<account_num>:role/ddb-sync-READ_ONLY_SOURCE
+    output:
+      table: ddb-sync-dest-2
+      region: us-east-2
+      role_arn: arn:aws:iam::<account_num>:role/ddb-sync_WRITE_ONLY_DEST
+```
+
 #### Tuning
 
 **Note:** Be sure your source tables have provisioned capacity for reads and writes before using the tool. To optimize performance you should adjust provisioned read and write capacity. Be cautious about table sharding constraints.
 
 During the output of the tool we note consumed write capacity units. This can be used to help provision and scale your table with use of the tool. See the output section for more details.
 
-### Configuration methods
+### Invocation
 
-Invoke the installed binary:
+Invoke the compiled binary and provide options for a run.
 
 `ddb-sync <cli-options>`
+
+The CLI options are present below:
+
+```
+  --config-file string       Filename for configuration yaml
+
+  --input-region string      The input region
+  --input-role-arn string    ARN of the input role
+  --input-table string       Name of the input table
+
+  --output-region string     The output region
+  --output-role-arn string   ARN of the output role
+  --output-table string      Name of the output table
+
+  --backfill                 Perform the backfill operation (default true)
+  --stream                   Perform the streaming operation (default true)
+```
 
 ### Output
 
@@ -134,68 +191,6 @@ TABLE                    DETAILS              BACKFILL        STREAM            
 ⇨ ddb-sync-dest-2       ~46K items (~26MiB)  -SKIPPED-       789 written (~46m35s latent)   9  items/s ⇨ ◕ ⇨ 17 WCU/s
 ⇨ ddb-sync-destination  ~46K items (~26MiB)  267164 written  -PENDING-                      49 items/s ⇨ ◕ ⇨ 50 WCU/s
 ```
-
-#### Invocation
-
-Invoke the compiled binary and provide options for a run.
-
-`ddb-sync <cli-options>`
-
-#### Permission Prerequisites
-
-The IAM permissions required by the roles the application uses to read and put data to the destination tables is listed as follows for each phase.
-
-| Table             | Backfill Permissions                                         | Stream Permissions                                           |
-| ----------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| **Source Table**      | dynamodb:DescribeTable<br />dynamodb:Scan | dynamodb:DescribeStream<br />dynamodb:DescribeTable<br />dynamodb:GetRecords<br />dynamodb:GetShardIterator |
-| **Destination Table** | dynamodb:BatchWriteItem | dynamodb:DeleteItem<br />dynamodb:PutItem |
-
-#### Configuration By CLI
-
-The CLI options are present below:
-
-```
-  --config-file string       Filename for configuration yaml
-
-  --input-region string      The input region
-  --input-role-arn string    ARN of the input role
-  --input-table string       Name of the input table
-
-  --output-region string     The output region
-  --output-role-arn string   ARN of the output role
-  --output-table string      Name of the output table
-
-  --backfill                 Perform the backfill operation (default true)
-  --stream                   Perform the streaming operation (default true)
-```
-
-Either a config file or combination of input and output options are required.
-
-The input and output table must differ by either name, region, or have a role arn provided.
-
-#### Configuration By File
-
-The ddb-sync configuration file format is YAML. It describes a plan object which has an array of objects of input and output tables, their table name, region and the role ARN to access it with the appropriate permissions listed above.
-
-An example is below.
-
-```yaml
----
-plan:
-  - input:
-      table: ddb-sync-source
-      region: us-west-2
-      role_arn: arn:aws:iam::<account_num>:role/ddb-sync-READ_ONLY_SOURCE
-    output:
-      table: ddb-sync-dest
-      region: us-east-2
-      role_arn: arn:aws:iam::<account_num>:role/ddb-sync_WRITE_ONLY_DEST
-    stream:
-      disabled: true
-    backfill:
-      disabled: false
-```
-
 
 ## Development and Testing tools
 You can use the golang script in `contrib/dynamo_writer.go` to help configure some faked items.  You'll need a table that conforms to table partition key schema.
