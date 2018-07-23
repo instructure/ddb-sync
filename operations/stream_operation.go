@@ -231,7 +231,7 @@ channel:
 			o.writeLatency.Update(*record.Dynamodb.ApproximateCreationDateTime)
 			if *record.EventName == "REMOVE" {
 				input := &dynamodb.DeleteItemInput{
-					Key: record.Dynamodb.Keys,
+					Key:                    record.Dynamodb.Keys,
 					ReturnConsumedCapacity: aws.String("TOTAL"),
 					TableName:              aws.String(o.OperationPlan.Output.TableName),
 				}
@@ -240,7 +240,7 @@ channel:
 				consumedCap = resp.ConsumedCapacity
 			} else {
 				input := &dynamodb.PutItemInput{
-					Item: record.Dynamodb.NewImage,
+					Item:                   record.Dynamodb.NewImage,
 					ReturnConsumedCapacity: aws.String("TOTAL"),
 					TableName:              aws.String(o.OperationPlan.Output.TableName),
 				}

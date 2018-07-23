@@ -1,14 +1,15 @@
-FROM golang:1.10-alpine
+FROM golang:1.11-rc-alpine
 
-RUN apk add --update \
+RUN apk add --update --no-cache \
     build-base \
     curl \
-    git \
-&& rm -rf /var/cache/apk/*
+    clang \
+    git
 
-RUN go get -u golang.org/x/vgo
+# Enable go 1.11 modules as "auto" won't work because we are in the GOPATH
+ENV GO111MODULE=on
 
 COPY . $GOPATH/src/gerrit.instructure.com/ddb-sync
 WORKDIR $GOPATH/src/gerrit.instructure.com/ddb-sync
 
-RUN vgo install .
+RUN go install ./...

@@ -17,14 +17,14 @@ pipeline {
 
         stage('Install') {
             steps {
-                sh "docker-compose run --rm -T test vgo install ./..."
+                sh "docker-compose run --rm -T test go install ./..."
             }
         }
 
         stage('Vet') {
             steps {
                 echo 'Running `go vet`…'
-                sh "docker-compose run --rm -T test vgo vet ./..."
+                sh "docker-compose run --rm -T test go vet ./..."
             }
         }
 
@@ -37,7 +37,7 @@ pipeline {
 
         stage('Test') {
             steps {
-                sh "docker-compose run --rm -T test vgo test ./..."
+                sh "docker-compose run --rm -T test go test ./..."
             }
         }
     }
