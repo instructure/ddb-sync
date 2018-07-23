@@ -125,6 +125,8 @@ plan:
 
 During the output of the tool we note consumed write capacity units. This can be used to help provision and scale your table with use of the tool. See the output section for more details.
 
+It is highly recommended that you run this utility on an EC2 instance with the proper permissions attached to the instance profile.  This will provide predictable network performance, consistent compute resources, and keep your data off the coffee shop router.
+
 ### Invocation
 
 Invoke the compiled binary and provide options for a run.
@@ -147,6 +149,9 @@ The CLI options are present below:
   --backfill                 Perform the backfill operation (default true)
   --stream                   Perform the streaming operation (default true)
 ```
+
+### Stopping
+Backfill only operations will exit (0) upon completion of all steps.  However, when streaming steps are enabled, the command will not ever exit.  When you've ascertained that your streaming operations have completed, you can SIGINT for a clean shutdown.
 
 ### Output
 
