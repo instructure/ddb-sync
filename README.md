@@ -1,7 +1,6 @@
 # DynamoDB Sync - ddb-sync
 
 ## Table of Contents
-
 - [Introduction](#introduction)
 
   - [Quickstart](#quickstart)
@@ -36,25 +35,26 @@
 
 
 ## Introduction
-
-ddb-sync is a tool used for syncing data from a set of source tables to a set of destination tables in DynamoDB.  It's configurable to perform the backfill operation, the stream consumption or both by CLI or config file options.
+ddb-sync is a tool used for syncing data from a set of source tables to a set of destination
+tables in DynamoDB.  It's configurable to perform the backfill operation, the stream consumption
+or both by CLI or config file options.
 
 ### Quickstart
-
 `go get gerrit.instructure.com/ddb-sync` and `ddb-sync --help` for usage
 
 ### Functionality
-
-ddb-sync has two phases of work: streaming and backfilling. Backfill is a scan of the source table and duplication of each record to the destination table. Stream consumes a pre-configured DynamoDB Stream and writes all record changes to the destination table.
+ddb-sync has two phases of work: streaming and backfilling. Backfill is a scan of the source
+table and duplication of each record to the destination table. Stream consumes a pre-configured
+DynamoDB Stream and writes all record changes to the destination table.
 
 If streaming and backfill are configured on a table, stream runs sequentially after backfill.
 
 **Note**: On actively written tables, the streaming phase is required to get new records synced.
 
-ddb-sync does not verify source and destination tables consistency and an outside methodology should be used to verify the table has been delivered as expected.
+ddb-sync does not verify source and destination tables consistency and an outside methodology
+should be used to verify the table has been delivered as expected.
 
 ### Problems we are solving
-
 - Table Migrations
   - Across regions
   - Across accounts
@@ -68,7 +68,6 @@ ddb-sync does not verify source and destination tables consistency and an outsid
 ## Usage
 
 ### Installation
-
 ddb-sync is a golang binary.
 
 Ensure you have a proper Go environment setup and then:
@@ -78,8 +77,8 @@ go get gerrit.instructure.com/ddb-sync
 ```
 
 ### Permission Prerequisites
-
-The IAM permissions required by the roles the application uses to read and put data to the destination tables is listed as follows for each phase.
+The IAM permissions required by the roles the application uses to read and put data to the
+destination tables is listed as follows for each phase.
 
 | Table             | Backfill Permissions                                         | Stream Permissions                                           |
 | ----------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
@@ -87,10 +86,15 @@ The IAM permissions required by the roles the application uses to read and put d
 | **Destination Table** | dynamodb:BatchWriteItem | dynamodb:DeleteItem<br />dynamodb:PutItem |
 
 ### Configuration
+ddb-sync is probably most useful when used with a config file. You can use a config file to
+run many concurrent operations together. Alternatively, you can provide a single set operation
+as flags to the CLI. Either a config file or a combination of input and output options are
+required. In addition if using the flags the input and output table must differ by either name,
+region, or have a role arn provided.
 
-ddb-sync is probably most useful when used with a config file. You can use a config file to run many concurrent operations together. Alternatively, you can provide a single set operation as flags to the CLI. Either a config file or a combination of input and output options are required. In addition if using the flags the input and output table must differ by either name, region, or have a role arn provided.
-
-The ddb-sync configuration file format is YAML. It describes a plan object which has an array of objects of input and output tables, their table name, region and the role ARN to access it with the appropriate permissions listed above.
+The ddb-sync configuration file format is YAML. It describes a plan object which has an array
+of objects of input and output tables, their table name, region and the role ARN to access it
+with the appropriate permissions listed above.
 
 An example is below.
 
@@ -120,22 +124,25 @@ plan:
 ```
 
 #### Tuning
+**Note:** Be sure your source tables have provisioned capacity for reads and writes before using
+the tool. To optimize performance you should adjust provisioned read and write capacity. Be
+cautious about table sharding constraints.
 
-**Note:** Be sure your source tables have provisioned capacity for reads and writes before using the tool. To optimize performance you should adjust provisioned read and write capacity. Be cautious about table sharding constraints.
+During the output of the tool we note consumed write capacity units. This can be used to help
+provision and scale your table with use of the tool. See the output section for more details.
 
-During the output of the tool we note consumed write capacity units. This can be used to help provision and scale your table with use of the tool. See the output section for more details.
-
-It is highly recommended that you run this utility on an EC2 instance with the proper permissions attached to the instance profile.  This will provide predictable network performance, consistent compute resources, and keep your data off the coffee shop router.
+It is highly recommended that you run this utility on an EC2 instance with the proper permissions
+attached to the instance profile.  This will provide predictable network performance, consistent
+compute resources, and keep your data off the coffee shop router.
 
 ### Invocation
-
 Invoke the compiled binary and provide options for a run.
 
 `ddb-sync <cli-options>`
 
 The CLI options are present below:
 
-```
+```console
   --config-file string       Filename for configuration yaml
 
   --input-region string      The input region
@@ -151,23 +158,27 @@ The CLI options are present below:
 ```
 
 ### Stopping
-Backfill only operations will exit (0) upon completion of all steps.  However, when streaming steps are enabled, the command will not ever exit.  When you've ascertained that your streaming operations have completed, you can SIGINT for a clean shutdown.
+Backfill only operations will exit (0) upon completion of all steps.  However,
+when streaming steps are enabled, the command will not ever exit.  When you've ascertained that
+your streaming operations have completed, you can SIGINT for a clean shutdown.
 
 ### Output
+ddb-sync logs to stdout and displays status messaging to stderr. Either can be redirected to
+a file for later viewing.
 
-ddb-sync logs to stdout and displays status messaging to stderr. Either can be redirected to a file for later viewing.
-
-For instance, `ddb-sync --config-file <config_file.yml> 1>ddb-sync-log.out` would capture the log to a file called ddb-sync-log.out.
+For instance, `ddb-sync --config-file <config_file.yml> 1>ddb-sync-log.out` would capture the
+log to a file called ddb-sync-log.out.
 
 #### Logging
-
-The log will display each operation on a table, relevant status to the operation. The format is below.
+The log will display each operation on a table, relevant status to the operation. The format
+is below.
 
 ```console
 timestamp [src-table] => [dest-table]: Log statement
 ```
 
-ddb-sync logs (with a timestamp prefix) on starting or completing actions as well as shard transitions in the stream. An example is below.
+ddb-sync logs (with a timestamp prefix) on starting or completing actions as well as shard
+transitions in the stream. An example is below.
 
 ```console
 2018/06/19 11:05:27 [ddb-sync-source] ⇨ [ddb-sync-dest]: Backfill complete. 14301 items written over 5m9s
@@ -184,12 +195,13 @@ ddb-sync will add progress updates every 20 minutes to the log for historical co
 ```
 
 #### Status Messaging
-
-The bottom portion of the output given to the user is the status messaging. It describes each table, the operation being worked on, the write capacity unit usage rate for writing to the destination table and the amount of records written from each operation.
+The bottom portion of the output given to the user is the status messaging. It describes each
+table, the operation being worked on, the write capacity unit usage rate for writing to the
+destination table and the amount of records written from each operation.
 
 An example follows:
 
-```
+```console
 ------------------------------------------------ Current Status ---------------------------------------------------
 TABLE                    DETAILS              BACKFILL        STREAM                         RATES & BUFFER
 ⇨ ddb-sync-dest         47K items (29MiB)    -COMPLETE-      2019 written (~18h57m latent)  12 items/s ⇨ ◕ ⇨ 32 WCU/s
@@ -198,7 +210,8 @@ TABLE                    DETAILS              BACKFILL        STREAM            
 ```
 
 ## Development and Testing tools
-You can use the golang script in `contrib/dynamo_writer.go` to help configure some faked items.  You'll need a table that conforms to table partition key schema.
+You can use the golang script in `contrib/dynamo_writer.go` to
+help configure some faked items.  You'll need a table that conforms to table partition key schema.
 
 
 For instance, in inseng, you can test with the source table of `ddb-sync-source`.
@@ -209,7 +222,9 @@ vgo run contrib/dynamo_writer.go <table_name>
 ```
 
 ## Contributing
+Pull requests welcome for both bug fixes and features.
 
-We welcome pull requests for additional functionality to add to and extend ddb-sync. If interested, write up a commit and add the "Toolsmiths" group to the functionality and drop a line in #toolsmiths notifying us that you have a commit ready for review. We will get a review in and give feedback as appropriate prior to merging. Our build system includes linting and a test suite but be sure to include further tests as a part of your request.
+Our build system includes linting and a test suite so be sure to include further
+tests as a part of your pull request.
 
 ------
