@@ -82,8 +82,69 @@ destination tables is listed as follows for each phase.
 
 | Table             | Backfill Permissions                                         | Stream Permissions                                           |
 | ----------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| **Source Table**      | dynamodb:DescribeTable<br />dynamodb:Scan | dynamodb:DescribeStream<br />dynamodb:DescribeTable<br />dynamodb:GetRecords<br />dynamodb:GetShardIterator |
+| **Source Table**      | dynamodb:DescribeTable<br />dynamodb:Scan | dynamodb:DescribeStream<br />dynamodb:DescribeTable<br />dynamodb:GetRecords (on **<src_table_arn>/streams/\***)<br />dynamodb:GetShardIterator <br />|
 | **Destination Table** | dynamodb:BatchWriteItem | dynamodb:DeleteItem<br />dynamodb:PutItem |
+
+#### Example backfill policy statement
+In order to backfill a table, a policy resembling the following must be present.
+```
+{
+  "Action": [
+    "dynamodb:DescribeTable",
+    "dynamodb:Scan"
+  ],
+  "Resource": [
+    "<input_table_arn>"
+  ],
+  "Effect": "Allow"
+},
+{
+  "Action": [
+    "dynamodb:BatchWriteItem"
+  ],
+  "Resource": [
+    "<output_table_arn>"
+  ],
+  "Effect": "Allow"
+}
+```
+
+#### Example stream policy statement
+In order to stream a table, a policy resembling the following must be present.
+```
+{
+  "Action": [
+    "dynamodb:DescribeStream",
+    "dynamodb:DescribeTable",
+    "dynamodb:GetShardIterator"
+  ],
+  "Resource": [
+    "<input_table_arn>"
+  ],
+  "Effect": "Allow"
+},
+{
+  "Action": [
+    "dynamodb:GetRecords"
+  ],
+  "Resource": [
+    "<input_table_arn>/stream/*"
+  ],
+  "Effect": "Allow"
+},
+{
+  "Action": [
+    "dynamodb:DeleteItem",
+    "dynamodb:PutItem"
+  ],
+  "Resource": [
+    "<output_table_arn>"
+  ],
+  "Effect": "Allow"
+}
+```
+
+
 
 ### Configuration
 ddb-sync is probably most useful when used with a config file. You can use a config file to
