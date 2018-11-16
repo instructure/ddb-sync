@@ -40,7 +40,7 @@ tables in DynamoDB.  It's configurable to perform the backfill operation, the st
 or both by CLI or config file options.
 
 ### Quickstart
-`go get gerrit.instructure.com/ddb-sync` and `ddb-sync --help` for usage
+`go get github.com/instructure/ddb-sync` and `ddb-sync --help` for usage
 
 ### Functionality
 ddb-sync has two phases of work: streaming and backfilling. Backfill is a scan of the source
@@ -73,7 +73,7 @@ ddb-sync is a golang binary.
 Ensure you have a proper Go environment setup and then:
 
 ```command
-go get gerrit.instructure.com/ddb-sync
+go get github.com/instructure/ddb-sync
 ```
 
 ### Permission Prerequisites

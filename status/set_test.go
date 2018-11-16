@@ -3,7 +3,7 @@ package status_test
 import (
 	"testing"
 
-	"gerrit.instructure.com/ddb-sync/status"
+	"github.com/instructure/ddb-sync/status"
 )
 
 func TestSetDelimiter(t *testing.T) {

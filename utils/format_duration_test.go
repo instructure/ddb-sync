@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"gerrit.instructure.com/ddb-sync/utils"
+	"github.com/instructure/ddb-sync/utils"
 )
 
 type formatDurationTestCase struct {

@@ -1,4 +1,4 @@
-module gerrit.instructure.com/ddb-sync
+module github.com/instructure/ddb-sync
 
 require (
 	github.com/aws/aws-sdk-go v1.14.6

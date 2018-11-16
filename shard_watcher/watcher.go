@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"gerrit.instructure.com/ddb-sync/log"
-	"gerrit.instructure.com/ddb-sync/shard_tree"
+	"github.com/instructure/ddb-sync/log"
+	"github.com/instructure/ddb-sync/shard_tree"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodbstreams"

@@ -3,7 +3,7 @@ package shard_tree_test
 import (
 	"testing"
 
-	"gerrit.instructure.com/ddb-sync/shard_tree"
+	"github.com/instructure/ddb-sync/shard_tree"
 )
 
 func TestShardTreeAddConflictingShardsReturnsError(t *testing.T) {

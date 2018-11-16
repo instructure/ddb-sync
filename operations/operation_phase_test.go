@@ -3,7 +3,7 @@ package operations_test
 import (
 	"testing"
 
-	"gerrit.instructure.com/ddb-sync/operations"
+	"github.com/instructure/ddb-sync/operations"
 )
 
 func TestPhaseTransitions(t *testing.T) {

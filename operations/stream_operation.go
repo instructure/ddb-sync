@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"gerrit.instructure.com/ddb-sync/config"
-	"gerrit.instructure.com/ddb-sync/log"
-	"gerrit.instructure.com/ddb-sync/shard_tree"
-	"gerrit.instructure.com/ddb-sync/shard_watcher"
-	"gerrit.instructure.com/ddb-sync/status"
-	"gerrit.instructure.com/ddb-sync/utils"
+	"github.com/instructure/ddb-sync/config"
+	"github.com/instructure/ddb-sync/log"
+	"github.com/instructure/ddb-sync/shard_tree"
+	"github.com/instructure/ddb-sync/shard_watcher"
+	"github.com/instructure/ddb-sync/status"
+	"github.com/instructure/ddb-sync/utils"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"

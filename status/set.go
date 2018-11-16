@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"gerrit.instructure.com/ddb-sync/tty_table"
+	"github.com/instructure/ddb-sync/tty_table"
 
 	"golang.org/x/crypto/ssh/terminal"
 )

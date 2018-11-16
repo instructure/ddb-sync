@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gerrit.instructure.com/ddb-sync/config"
-	"gerrit.instructure.com/ddb-sync/log"
+	"github.com/instructure/ddb-sync/config"
+	"github.com/instructure/ddb-sync/log"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"gerrit.instructure.com/ddb-sync/utils"
+	"github.com/instructure/ddb-sync/utils"
 )
 
 type LatencyLock struct {

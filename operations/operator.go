@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"sync"
 
-	"gerrit.instructure.com/ddb-sync/config"
-	"gerrit.instructure.com/ddb-sync/status"
+	"github.com/instructure/ddb-sync/config"
+	"github.com/instructure/ddb-sync/status"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"

@@ -6,10 +6,10 @@ import (
 	"strings"
 	"sync"
 
-	"gerrit.instructure.com/ddb-sync/config"
-	"gerrit.instructure.com/ddb-sync/log"
-	"gerrit.instructure.com/ddb-sync/operations"
-	"gerrit.instructure.com/ddb-sync/status"
+	"github.com/instructure/ddb-sync/config"
+	"github.com/instructure/ddb-sync/log"
+	"github.com/instructure/ddb-sync/operations"
+	"github.com/instructure/ddb-sync/status"
 )
 
 const (

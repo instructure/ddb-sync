@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"gerrit.instructure.com/ddb-sync/status"
+	"github.com/instructure/ddb-sync/status"
 )
 
 var (

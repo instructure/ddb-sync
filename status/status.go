@@ -3,7 +3,7 @@ package status
 import (
 	"fmt"
 
-	"gerrit.instructure.com/ddb-sync/config"
+	"github.com/instructure/ddb-sync/config"
 )
 
 type Status struct {

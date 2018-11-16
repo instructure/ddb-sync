@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"gerrit.instructure.com/ddb-sync/status"
+	"github.com/instructure/ddb-sync/status"
 )
 
 var (

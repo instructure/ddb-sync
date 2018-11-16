@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"gerrit.instructure.com/ddb-sync/log"
+	"github.com/instructure/ddb-sync/log"
 )
 
 func TestApproximate(t *testing.T) {

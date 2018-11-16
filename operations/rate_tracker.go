@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gerrit.instructure.com/ddb-sync/log"
+	"github.com/instructure/ddb-sync/log"
 )
 
 // RateTracker is a structure to hold and manage a rate tracking loop, counters and timers

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"gerrit.instructure.com/ddb-sync/tty_table"
+	"github.com/instructure/ddb-sync/tty_table"
 )
 
 type RenderTestCase struct {

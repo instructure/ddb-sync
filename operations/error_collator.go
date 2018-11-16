@@ -3,7 +3,7 @@ package operations
 import (
 	"context"
 
-	"gerrit.instructure.com/ddb-sync/log"
+	"github.com/instructure/ddb-sync/log"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 )

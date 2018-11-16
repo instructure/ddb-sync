@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"time"
 
-	"gerrit.instructure.com/ddb-sync/log"
-	"gerrit.instructure.com/ddb-sync/operations"
+	"github.com/instructure/ddb-sync/log"
+	"github.com/instructure/ddb-sync/operations"
 )
 
 var displayTickerTime = 15 * time.Second

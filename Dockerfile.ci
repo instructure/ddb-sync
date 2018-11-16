@@ -9,7 +9,7 @@ RUN apk add --update --no-cache \
 # Enable go 1.11 modules as "auto" won't work because we are in the GOPATH
 ENV GO111MODULE=on
 
-COPY . $GOPATH/src/gerrit.instructure.com/ddb-sync
-WORKDIR $GOPATH/src/gerrit.instructure.com/ddb-sync
+COPY . $GOPATH/src/github.com/instructure/ddb-sync
+WORKDIR $GOPATH/src/github.com/instructure/ddb-sync
 
 RUN go install ./...

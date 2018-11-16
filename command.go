@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"gerrit.instructure.com/ddb-sync/config"
+	"github.com/instructure/ddb-sync/config"
 
 	flag "github.com/spf13/pflag"
 )
