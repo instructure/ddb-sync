@@ -1,5 +1,8 @@
 language: go
 
+go:
+  - "1.x"
+
 before_script:
   - test -z "$(gofmt -l .)"
   - go vet ./...
