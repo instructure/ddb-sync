@@ -28,7 +28,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/defaults"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v2"
 )
 
 const MaxRetries int = 15
@@ -41,6 +41,10 @@ var (
 	ErrOutputTableNameRequired = errors.New("Output table name is required")
 
 	ErrInputAndOutputTablesCannotMatch = errors.New("Input and output tables cannot match")
+
+	ErrBackfillSegmentConfiguration       = errors.New("Backfill segment configuration is invalid")
+	ErrBackfillTotalSegmentsConfiguration = errors.New("Backfill total segments configuration is invalid")
+	ErrStreamCannotRunWithSegmentedScan   = errors.New("Stream must be disabled if scan segment target is specified")
 )
 
 type PlanConfig struct {
@@ -62,7 +66,9 @@ type Output struct {
 }
 
 type Backfill struct {
-	Disabled bool `yaml:"disabled"`
+	Disabled      bool  `yaml:"disabled"`
+	Segments      []int `yaml:"segments"`
+	TotalSegments int   `yaml:"total_segments"`
 }
 
 type Stream struct {
@@ -118,11 +124,15 @@ func (p OperationPlan) Validate() error {
 		return ErrOutputTableNameRequired
 	}
 
+	err := p.validateBackfillSegments()
+	if err != nil {
+		return err
+	}
+
 	if p.Input.Region != p.Output.Region || p.Input.TableName != p.Output.TableName || p.Input.RoleARN != p.Output.RoleARN {
 		return nil
-	} else {
-		return ErrInputAndOutputTablesCannotMatch
 	}
+	return ErrInputAndOutputTablesCannotMatch
 }
 
 func (p OperationPlan) GetSessions() (*session.Session, *session.Session, error) {
@@ -179,4 +189,51 @@ func ParseConfigFile(filePath string) ([]OperationPlan, error) {
 		return nil, fmt.Errorf("Failed to parse configuration file: %v", err)
 	}
 	return config.Plan, nil
+}
+
+func (p OperationPlan) validateBackfillSegments() error {
+	if p.Backfill.Disabled == true {
+		return nil
+	}
+
+	// That both backfill segment and backfill total segment were configured is already validated
+	if p.Backfill.TotalSegments != 0 {
+		if p.Backfill.TotalSegments < 1 {
+			return ErrBackfillTotalSegmentsConfiguration
+		}
+
+		// Must be specified to require configuration
+		if len(p.Backfill.Segments) > 0 {
+			min, max := segmentBounds(p.Backfill.Segments)
+			if min < 0 {
+				return ErrBackfillSegmentConfiguration
+			}
+
+			if max >= p.Backfill.TotalSegments {
+				// Cannot be greater than or equal to TotalSegments
+				return ErrBackfillSegmentConfiguration
+			}
+
+			// Stream must be disabled as guarding ordering across distributed segment scans is difficult to message
+			if p.Stream.Disabled != true {
+				return ErrStreamCannotRunWithSegmentedScan
+			}
+		}
+	}
+
+	return nil
+}
+func segmentBounds(vals []int) (int, int) {
+	// Generate some bounds
+	min := 0
+	max := 0
+	for _, v := range vals {
+		if v < min {
+			min = v
+		}
+		if v > max {
+			max = v
+		}
+	}
+	return min, max
 }

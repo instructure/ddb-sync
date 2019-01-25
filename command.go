@@ -61,13 +61,25 @@ func ParseArgs(args []string) ([]config.OperationPlan, error) {
 		return plans, nil
 	}
 
+	bsChanged := flagSet.Lookup("backfill-segments").Changed
+	btsChanged := flagSet.Lookup("backfill-total-segments").Changed
+	if bsChanged && !btsChanged {
+		fmt.Println("ddb-sync:")
+		fmt.Println(flagSet.FlagUsages())
+
+		return nil, fmt.Errorf("To specify \"backfill-segments\" you must configure \"backfill-total-segments\"")
+	}
+
 	inputRegion, _ := flagSet.GetString("input-region")
-	inputTable, _ := flagSet.GetString("input-table")
 	inputRole, _ := flagSet.GetString("input-role-arn")
+	inputTable, _ := flagSet.GetString("input-table")
 
 	outputRegion, _ := flagSet.GetString("output-region")
-	outputTable, _ := flagSet.GetString("output-table")
 	outputRole, _ := flagSet.GetString("output-role-arn")
+	outputTable, _ := flagSet.GetString("output-table")
+
+	backfillSegments, _ := flagSet.GetIntSlice("backfill-segments")
+	backfillTotalSegments, _ := flagSet.GetInt("backfill-total-segments")
 
 	backfill, _ := flagSet.GetBool("backfill")
 	stream, _ := flagSet.GetBool("stream")
@@ -87,7 +99,9 @@ func ParseArgs(args []string) ([]config.OperationPlan, error) {
 				RoleARN: outputRole,
 			},
 			Backfill: config.Backfill{
-				Disabled: !backfill,
+				Disabled:      !backfill,
+				Segments:      backfillSegments,
+				TotalSegments: backfillTotalSegments,
 			},
 			Stream: config.Stream{
 				Disabled: !stream,
@@ -110,6 +124,9 @@ func newFlagSet() *flag.FlagSet {
 	flag.String("output-region", "", "The output region")
 	flag.String("output-table", "", "Name of the output table")
 	flag.String("output-role-arn", "", "ARN of the output role")
+
+	flag.IntSlice("backfill-segments", []int{}, "[Optional] Specify backfill scan segment(s) to target in this operation, 0-indexed. Example: \"0,1,2\". Prohibits streaming and \"backfill-total-segments\" must be specified.")
+	flag.Int("backfill-total-segments", 0, "Specify backfill 'Scan' concurrency segments")
 
 	flag.Bool("backfill", true, "Perform the backfill operation")
 	flag.Bool("stream", true, "Perform the streaming operation")

@@ -174,6 +174,8 @@ plan:
       disabled: true
     backfill:
       disabled: false
+      segments: 0,1,2  # This is 0-indexed, 0 through 3 are valid in this case
+      total_segments: 4
   - input:
       table: ddb-sync-source-2
       region: us-west-2
@@ -196,6 +198,14 @@ It is highly recommended that you run this utility on an EC2 instance with the p
 attached to the instance profile.  This will provide predictable network performance, consistent
 compute resources, and keep your data off the coffee shop router.
 
+If you have a partitioned source table, you may want to consider specifying `backfill-total-segments`
+to optimize your capacity to scan your source table.  A typical value for this would be ~N where N is the number of partitions in your source table.
+
+If you are limited by the I/O capacity of an EC2 instance, you can consider splitting up the
+backfill segments across multiple EC2 instances.  This would be done by specifying `total_segments`
+count and giving an unique set of `backfill-segments` to each separate instance.  This configuration requires that *all* backfill segments
+complete *before* invoking a stream operation and therefore `stream` must be disabled and invoked as a unique operation in this case.
+
 ### Invocation
 Invoke the compiled binary and provide options for a run.
 
@@ -204,19 +214,26 @@ Invoke the compiled binary and provide options for a run.
 The CLI options are present below:
 
 ```console
-  --config-file string       Filename for configuration yaml
+  --config-file string            Filename for configuration yaml
 
-  --input-region string      The input region
-  --input-role-arn string    ARN of the input role
-  --input-table string       Name of the input table
+  --input-region string           The input region
+  --input-role-arn string         ARN of the input role
+  --input-table string            Name of the input table
 
-  --output-region string     The output region
-  --output-role-arn string   ARN of the output role
-  --output-table string      Name of the output table
+  --output-region string          The output region
+  --output-role-arn string        ARN of the output role
+  --output-table string           Name of the output table
 
-  --backfill                 Perform the backfill operation (default true)
-  --stream                   Perform the streaming operation (default true)
+  --backfill-segments ints        [Optional] Specify backfill scan segment(s) to target in this operation, 0-indexed. Example: "0,1,2". Prohibits streaming and "backfill-total-segments" must be specified.
+  --backfill-total-segments int   Specify backfill 'Scan' concurrency segments
+
+  --backfill                      Perform the backfill operation (default true)
+  --stream                        Perform the streaming operation (default true)
 ```
+
+To disable streaming or backfill, pass false.
+
+`ddb-sync --stream=false`
 
 ### Stopping
 Backfill only operations will exit (0) upon completion of all steps.  However,

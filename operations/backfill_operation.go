@@ -144,9 +144,8 @@ func (o *BackfillOperation) scan() error {
 	defer close(o.c)
 	o.scanning.Start()
 
-	input := &dynamodb.ScanInput{
-		ReturnConsumedCapacity: aws.String("TOTAL"),
-		TableName:              &o.OperationPlan.Input.TableName,
+	collator := ErrorCollator{
+		Cancel: o.contextCancelFunc,
 	}
 
 	done := o.context.Done()
@@ -166,25 +165,64 @@ func (o *BackfillOperation) scan() error {
 		return true
 	}
 
-	err := o.inputClient.ScanPagesWithContext(o.context, input, scanHandler)
-
-	if err != nil {
-		err = RequestCanceledCheck(err)
-		if err != context.Canceled {
-			o.scanning.Error()
-			err = fmt.Errorf("%s: Backfill failed: (Scan) %v", o.OperationPlan.Description(), err)
+	if o.OperationPlan.Backfill.TotalSegments > 0 {
+		if len(o.OperationPlan.Backfill.Segments) > 0 {
+			// If segment indexes are provided, run those segments
+			for _, segmentIndex := range o.OperationPlan.Backfill.Segments {
+				collator.Register(o.scanner(segmentIndex, o.OperationPlan.Backfill.TotalSegments, scanHandler, done))
+			}
+		} else {
+			// If not segment indexes are provided, run all segment indices
+			for i := 0; i < o.OperationPlan.Backfill.TotalSegments; i++ {
+				collator.Register(o.scanner(i, o.OperationPlan.Backfill.TotalSegments, scanHandler, done))
+			}
 		}
-		return err
+	} else {
+		// If unspecified, run a single segment
+		collator.Register(o.scanner(0, 1, scanHandler, done))
 	}
 
-	select {
-	case <-done:
-		return o.context.Err()
-
-	default:
+	err := collator.Run()
+	if err == nil {
 		log.Printf("%s: Backfill: scan complete %d items read over %s", o.OperationPlan.Description(), o.readItemRateTracker.Count(), utils.FormatDuration(o.readItemRateTracker.Duration()))
+
 		o.scanning.Finish()
 		return nil
+	}
+
+	if err != context.Canceled {
+		o.scanning.Error()
+		return fmt.Errorf("%s: Backfill failed: (Scan) %v", o.OperationPlan.Description(), err)
+	}
+
+	return err
+}
+
+func (o *BackfillOperation) scanner(segIndex, segCount int, scanHandler func(*dynamodb.ScanOutput, bool) bool, done <-chan struct{}) func() error {
+	return func() error {
+		var input *dynamodb.ScanInput
+		if segCount > 1 {
+			input = &dynamodb.ScanInput{
+				ReturnConsumedCapacity: aws.String("TOTAL"),
+				Segment:                aws.Int64(int64(segIndex)),
+				TotalSegments:          aws.Int64(int64(segCount)),
+				TableName:              &o.OperationPlan.Input.TableName,
+			}
+		} else {
+			input = &dynamodb.ScanInput{
+				ReturnConsumedCapacity: aws.String("TOTAL"),
+				TableName:              &o.OperationPlan.Input.TableName,
+			}
+		}
+
+		err := o.inputClient.ScanPagesWithContext(o.context, input, scanHandler)
+
+		select {
+		case <-done:
+			return o.context.Err()
+		default:
+			return err
+		}
 	}
 }
 
