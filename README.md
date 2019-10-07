@@ -1,4 +1,4 @@
-# DynamoDB Sync - ddb-sync
+# DynamoDB Sync - ddb-sync [![GoDoc](https://godoc.org/github.com/instructure/ddb-sync?status.svg)](https://godoc.org/github.com/instructure/ddb-sync)
 
 ## Table of Contents
 - [Introduction](#introduction)
