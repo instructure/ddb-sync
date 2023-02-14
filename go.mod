@@ -1,7 +1,7 @@
 module github.com/instructure/ddb-sync
 
 require (
-	github.com/aws/aws-sdk-go v1.25.7
+	github.com/aws/aws-sdk-go v1.34.0
 	github.com/kr/pretty v0.2.0 // indirect
 	github.com/segmentio/ksuid v1.0.2
 	github.com/spf13/pflag v1.0.5
