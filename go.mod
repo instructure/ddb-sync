@@ -8,7 +8,7 @@ require (
 	github.com/stretchr/testify v1.6.1 // indirect
 	github.com/tears-of-noobs/bytefmt v0.0.0-20150721113221-76685b6f8f35
 	golang.org/x/crypto v0.0.0-20191002192127-34f69633bfdc
-	golang.org/x/sys v0.0.0-20191007154456-ef33b2fb2c41 // indirect
+	golang.org/x/sys v0.1.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	gopkg.in/yaml.v2 v2.2.4
 )
